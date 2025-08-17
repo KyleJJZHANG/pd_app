@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Tag, Calendar, Trash2, Edit } from 'lucide-react';
+import { Plus, Search, Tag, Calendar, Trash2, Edit, ArrowLeft } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { MemoryItem } from '../data';
 import StorageService from '../services/storage';
@@ -49,6 +48,11 @@ const Memories: React.FC = () => {
     setIsAddingMemory(false);
   };
 
+  const handleCancelAddMemory = () => {
+    setNewMemory({ title: '', content: '', tags: '' });
+    setIsAddingMemory(false);
+  };
+
   const handleDeleteMemory = (id: string) => {
     storageService.deleteMemory(id);
     setMemories(memories.filter(memory => memory.id !== id));
@@ -65,8 +69,93 @@ const Memories: React.FC = () => {
     return matchesSearch && matchesTag;
   });
 
+  // 渲染新增记忆全屏界面
+  if (isAddingMemory) {
+    return (
+      <div className="fixed inset-0 z-50 bg-gradient-to-br from-pink-50 to-amber-50 flex flex-col">
+        {/* Header */}
+        <div className="bg-white/80 backdrop-blur-md border-b border-amber-200/50 p-4">
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCancelAddMemory}
+              className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 mr-3"
+            >
+              <ArrowLeft size={20} />
+            </Button>
+            <span className="text-2xl mr-2">✨</span>
+            <h1 className="text-xl font-semibold text-amber-800">封存新记忆</h1>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 pb-20">
+          <div className="max-w-md mx-auto space-y-6">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  记忆标题
+                </label>
+                <Input
+                  placeholder="给这段回忆起个名字..."
+                  value={newMemory.title}
+                  onChange={(e) => setNewMemory({...newMemory, title: e.target.value})}
+                  className="border-amber-200 focus:border-amber-400"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  记忆内容
+                </label>
+                <Textarea
+                  placeholder="记录这个美好的时刻，写下你的感受和想法..."
+                  value={newMemory.content}
+                  onChange={(e) => setNewMemory({...newMemory, content: e.target.value})}
+                  rows={8}
+                  className="border-amber-200 focus:border-amber-400 resize-none"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  标签 <span className="text-gray-500 text-xs">(可选)</span>
+                </label>
+                <Input
+                  placeholder="用逗号分隔，如：开心,朋友,旅行"
+                  value={newMemory.tags}
+                  onChange={(e) => setNewMemory({...newMemory, tags: e.target.value})}
+                  className="border-amber-200 focus:border-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-4">
+              <Button
+                onClick={handleAddMemory}
+                disabled={!newMemory.title.trim() || !newMemory.content.trim()}
+                className="w-full bg-gradient-to-r from-amber-400 to-yellow-500 text-white hover:from-amber-500 hover:to-yellow-600 h-12 text-base"
+              >
+                💾 保存记忆
+              </Button>
+              
+              <Button
+                variant="outline"
+                onClick={handleCancelAddMemory}
+                className="w-full h-12 text-base"
+              >
+                取消
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-amber-50 p-4">
+    <div className="min-h-full bg-gradient-to-br from-pink-50 to-amber-50 p-4">
       {/* Header */}
       <div className="bg-white/80 backdrop-blur-md rounded-xl p-4 mb-6">
         <div className="flex items-center justify-between">
@@ -118,52 +207,13 @@ const Memories: React.FC = () => {
 
       {/* Add Memory Button */}
       <div className="max-w-md mx-auto mb-6">
-        <Dialog open={isAddingMemory} onOpenChange={setIsAddingMemory}>
-          <DialogTrigger asChild>
-            <Button className="w-full bg-gradient-to-r from-amber-400 to-yellow-500 text-white hover:from-amber-500 hover:to-yellow-600">
-              <Plus size={16} className="mr-2" />
-              新增记忆
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md mx-auto">
-            <DialogHeader>
-              <DialogTitle>封存新记忆</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <Input
-                placeholder="记忆标题"
-                value={newMemory.title}
-                onChange={(e) => setNewMemory({...newMemory, title: e.target.value})}
-              />
-              <Textarea
-                placeholder="记录这个美好的时刻..."
-                value={newMemory.content}
-                onChange={(e) => setNewMemory({...newMemory, content: e.target.value})}
-                rows={4}
-              />
-              <Input
-                placeholder="标签 (用逗号分隔，如：开心,朋友,旅行)"
-                value={newMemory.tags}
-                onChange={(e) => setNewMemory({...newMemory, tags: e.target.value})}
-              />
-              <div className="flex space-x-2">
-                <Button
-                  onClick={handleAddMemory}
-                  disabled={!newMemory.title.trim() || !newMemory.content.trim()}
-                  className="flex-1"
-                >
-                  保存记忆
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsAddingMemory(false)}
-                >
-                  取消
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button 
+          onClick={() => setIsAddingMemory(true)}
+          className="w-full bg-gradient-to-r from-amber-400 to-yellow-500 text-white hover:from-amber-500 hover:to-yellow-600"
+        >
+          <Plus size={16} className="mr-2" />
+          新增记忆
+        </Button>
       </div>
 
       {/* Memories Grid */}

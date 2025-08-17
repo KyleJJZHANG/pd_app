@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { Home, MessageCircle, Map, BookOpen, User } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -9,19 +9,27 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+
+  // 路由切换时重置滚动位置到顶部
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTop = 0;
+    }
+  }, [location.pathname]);
 
   const navItems = [
     { path: '/', icon: Home, label: '首页' },
-    { path: '/chat', icon: MessageCircle, label: '聊天' },
-    { path: '/map', icon: Map, label: '地图' },
-    { path: '/memories', icon: BookOpen, label: '记忆馆' },
+    // { path: '/chat', icon: MessageCircle, label: '情绪足迹' },
+    { path: '/map', icon: Map, label: '一起走走' },
+    { path: '/memories', icon: BookOpen, label: '记忆小屋' },
     { path: '/profile', icon: User, label: '我的' },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-blue-50 flex flex-col">
+    <div className="h-screen bg-gradient-to-br from-amber-50 to-blue-50 flex flex-col">
       {/* Main Content */}
-      <main className="flex-1 pb-20">
+      <main ref={mainRef} className="flex-1 overflow-y-auto pb-20">
         {children}
       </main>
 

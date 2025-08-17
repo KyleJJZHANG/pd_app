@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Image, Video, BarChart3 } from 'lucide-react';
+import { Send, Image, Video, BarChart3, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
@@ -14,6 +15,7 @@ const Chat: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [showEmotionReport, setShowEmotionReport] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   const storageService = StorageService.getInstance();
   const emotionAnalyzer = EmotionAnalyzer.getInstance();
 
@@ -83,9 +85,7 @@ const Chat: React.FC = () => {
       id: `timeline_${Date.now()}`,
       type: 'chat',
       refId: userMessage.id,
-      createdAt: today,
-      emotionTags,
-      emotionStats: todayStats
+      createdAt: today
     };
     storageService.saveTimelineEntry(timelineEntry);
 
@@ -109,12 +109,24 @@ const Chat: React.FC = () => {
     }
   };
 
+  const handleGoBack = () => {
+    navigate(-1);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gradient-to-b from-blue-50 to-yellow-50">
       {/* Header */}
       <div className="bg-white/80 backdrop-blur-md border-b border-amber-200/50 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleGoBack}
+              className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 mr-3"
+            >
+              <ArrowLeft size={20} />
+            </Button>
             <span className="text-2xl mr-2">🦆</span>
             <h1 className="text-xl font-semibold text-amber-700">和鸭鸭聊聊</h1>
           </div>

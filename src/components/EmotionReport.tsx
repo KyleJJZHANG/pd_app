@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Heart, Brain, Sparkles } from 'lucide-react';
+import { ArrowLeft, Heart, Brain, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -52,32 +52,26 @@ const EmotionReport: React.FC<EmotionReportProps> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      
-      {/* Dialog */}
-      <Card className="relative w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4 bg-gradient-to-br from-amber-50 to-orange-50">
-        <CardHeader className="relative">
+    <div className="fixed inset-0 z-50 bg-gradient-to-br from-amber-50 to-orange-50 flex flex-col">
+      {/* Header */}
+      <div className="bg-white/80 backdrop-blur-md border-b border-amber-200/50 p-4">
+        <div className="flex items-center">
           <Button
             variant="ghost"
-            size="icon"
-            className="absolute right-2 top-2"
+            size="sm"
             onClick={onClose}
+            className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 mr-3"
           >
-            <X size={20} />
+            <ArrowLeft size={20} />
           </Button>
-          
-          <div className="flex items-center space-x-2">
-            <Brain className="text-amber-600" size={24} />
-            <CardTitle className="text-amber-800">情绪足迹报告</CardTitle>
-          </div>
-        </CardHeader>
+          <Brain className="text-amber-600 mr-2" size={24} />
+          <h1 className="text-xl font-semibold text-amber-800">情绪足迹报告</h1>
+        </div>
+      </div>
 
-        <CardContent className="space-y-6">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4 pb-20">
+        <div className="max-w-md mx-auto space-y-6">
           {/* 今日情绪概览 */}
           <div className="bg-white/60 rounded-lg p-4">
             <div className="flex items-center space-x-2 mb-3">
@@ -174,8 +168,8 @@ const EmotionReport: React.FC<EmotionReportProps> = ({ isOpen, onClose }) => {
               <p>• 和鸭鸭多聊聊，分享你的感受吧！🦆</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 };

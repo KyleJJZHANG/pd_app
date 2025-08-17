@@ -10,15 +10,22 @@ import './App.css';
 function App() {
   return (
     <Router>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/map" element={<MapExplore />} />
-          <Route path="/memories" element={<Memories />} />
-          <Route path="/profile" element={<Profile />} />
-        </Routes>
-      </Layout>
+      <Routes>
+        {/* 聊天页面独立全屏显示，无底部导航栏 */}
+        <Route path="/chat" element={<Chat />} />
+        
+        {/* 其他页面使用Layout布局 */}
+        <Route path="/*" element={
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/map" element={<MapExplore />} />
+              <Route path="/memories" element={<Memories />} />
+              <Route path="/profile" element={<Profile />} />
+            </Routes>
+          </Layout>
+        } />
+      </Routes>
     </Router>
   );
 }

@@ -114,6 +114,80 @@ This is a **心理鸭 (Psychological Duck)** therapy/wellness app - a React SPA 
 - `/public/panels/` - Comic page images
 - `/public/videos/` - Short video clips
 
+## Mobile-First Layout Optimizations (Recent Updates)
+
+### 1. Layout Scroll Management (Layout.tsx)
+**Problem**: Scroll bars extended to bottom navigation, affecting mobile UX
+**Solution**: 
+- Changed container from `min-h-screen` to `h-screen` for fixed height
+- Added `overflow-y-auto` to main content area for independent scrolling
+- Added `pb-20` bottom padding to prevent content occlusion by navigation bar
+- Implemented route-based scroll position reset using `useEffect` + `mainRef.scrollTop = 0`
+
+**Result**: Clean scrolling experience with navigation bar always visible and stable
+
+### 2. Immersive Chat Experience (App.tsx + Chat.tsx)
+**Problem**: Chat page had bottom navigation bar, reducing immersion
+**Solution**:
+- Modified route structure: Chat page (`/chat`) extracted from Layout wrapper
+- Other pages remain within Layout for normal navigation
+- Added smart back button in Chat header with `useNavigate(-1)` for intelligent return
+- Chat now displays full-screen without bottom navigation interference
+
+**Result**: Full immersive chat experience similar to modern messaging apps
+
+### 3. Mobile-Optimized Emotion Report (EmotionReport.tsx)
+**Problem**: Emotion report used desktop-style dialog, poor mobile experience
+**Solution**:
+- Converted from dialog overlay to full-screen page layout
+- Replaced backdrop/modal with `fixed inset-0` full-screen container
+- Added mobile-friendly header with back button (ArrowLeft icon)
+- Implemented independent content scrolling with `flex-1 overflow-y-auto`
+- Maintained all existing functionality while improving mobile UX
+
+**Result**: Native app-like emotion report experience on mobile devices
+
+### 4. Navigation Flow Improvements
+- Intelligent back navigation throughout the app
+- Consistent header patterns for full-screen pages
+- Smooth route transitions with scroll position management
+- Mobile-first interaction patterns
+
+### 5. TypeScript Fixes
+- Added missing `EmotionTag` and `EmotionStats` interfaces to `src/data/index.ts`
+- Implemented complete emotion analytics system in StorageService
+- Fixed type errors in Chat.tsx timeline entries
+
+### 6. Layout Height Conflict Resolution
+**Problem**: Double height setting causing unexpected scrollbars in pages
+**Root Cause**: 
+- Layout.tsx sets `h-screen` container with `pb-20` (80px bottom padding)
+- Child pages (like Home.tsx) also set `h-screen` causing height overflow
+- Result: Page height (100vh) + Layout padding (80px) > Available viewport height
+
+**Solution Pattern**:
+```tsx
+// ❌ Wrong - causes height overflow
+<div className="h-screen">  {/* Child page */}
+  {/* Content */}
+</div>
+
+// ✅ Correct - adapts to available space  
+<div className="h-full">    {/* Child page */}
+  {/* Content */} 
+</div>
+```
+
+**Layout Structure Understanding**:
+```
+Layout (h-screen)
+├── main (flex-1, overflow-y-auto, pb-20)
+│   └── Page Component (h-full) ← Should adapt to main's space
+└── Bottom Navigation (fixed, ~80px height)
+```
+
+**Fixed in**: Home.tsx - Changed from `h-screen` to `h-full` and optimized spacing
+
 ## Development Practices
 
 - Use TypeScript interfaces from `src/data/index.ts` for type safety
@@ -122,3 +196,7 @@ This is a **心理鸭 (Psychological Duck)** therapy/wellness app - a React SPA 
 - Use EmotionAnalyzer for any text sentiment features
 - Maintain duck-themed color palette and gentle UI animations
 - Test localStorage functionality across browser sessions
+- **Mobile-First**: Always consider mobile UX when designing layouts and interactions
+- **Immersive Experience**: Use full-screen layouts for primary user flows (chat, reports)
+- **Smart Navigation**: Implement intelligent back navigation with `useNavigate(-1)`
+- **Height Management**: Use `h-full` in child pages, `h-screen` only in Layout component
