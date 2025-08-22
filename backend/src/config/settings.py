@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     
     # Ollama Configuration
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "deepseek-r1-7B-Q5:latest"
+    ollama_model: str = "llama3.1"
     ollama_timeout: int = 30
     
     # Agent-specific LLM Configuration

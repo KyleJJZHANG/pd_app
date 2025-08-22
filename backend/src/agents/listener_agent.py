@@ -157,9 +157,13 @@ class ListenerAgent(BaseAgent):
         # Enhance with rule-based analysis
         rule_analysis = self._rule_based_analysis(original_text)
         
+        # Normalize sentiment value
+        sentiment_raw = parsed_data.get("sentiment", rule_analysis.sentiment)
+        sentiment = self._normalize_sentiment(sentiment_raw)
+        
         # Combine results
         emotion_analysis = EmotionAnalysis(
-            sentiment=parsed_data.get("sentiment", rule_analysis.sentiment),
+            sentiment=sentiment,
             intensity=max(
                 parsed_data.get("intensity", 0.5),
                 rule_analysis.intensity
@@ -186,6 +190,38 @@ class ListenerAgent(BaseAgent):
         )
         
         return emotion_analysis
+    
+    def _normalize_sentiment(self, sentiment_raw: str) -> str:
+        """
+        Normalize sentiment value to match Pydantic model requirements.
+        
+        Args:
+            sentiment_raw: Raw sentiment value from LLM
+            
+        Returns:
+            Normalized sentiment value
+        """
+        if not sentiment_raw:
+            return "neutral"
+        
+        sentiment_str = str(sentiment_raw).lower().strip()
+        
+        # Handle various positive indicators
+        if sentiment_str in ["+", "正面", "积极", "positive", "pos", "good"]:
+            return "positive"
+        
+        # Handle various negative indicators  
+        elif sentiment_str in ["-", "负面", "消极", "negative", "neg", "bad"]:
+            return "negative"
+            
+        # Handle neutral indicators
+        elif sentiment_str in ["0", "中性", "neutral", "neu", "平静"]:
+            return "neutral"
+            
+        # Default to neutral for unknown formats
+        else:
+            logger.warning(f"Unknown sentiment format: {sentiment_raw}, defaulting to neutral")
+            return "neutral"
     
     def _rule_based_analysis(self, text: str) -> EmotionAnalysis:
         """
@@ -312,9 +348,9 @@ class ListenerAgent(BaseAgent):
         }
         
         # Simple pattern matching
-        if "正面" in text or "积极" in text or "positive" in text.lower():
+        if "正面" in text or "积极" in text or "positive" in text.lower() or "+" in text:
             result["sentiment"] = "positive"
-        elif "负面" in text or "消极" in text or "negative" in text.lower():
+        elif "负面" in text or "消极" in text or "negative" in text.lower() or "-" in text:
             result["sentiment"] = "negative"
         
         # Extract emotions mentioned in text

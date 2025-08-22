@@ -240,10 +240,30 @@ class BaseAgent(ABC):
         )
         
         try:
-            result = task.execute_async()
+            logger.debug(f"Direct LLM call for {self.name} with task: {task_description[:50]}...")
+            
+            # Format prompt for LLM
+            full_prompt = f"""Context: {context if context else "You are a helpful assistant."}
+
+Task: {task_description}
+
+Expected Output: {expected_output}"""
+            
+            # Use liteLLM completion directly 
+            from litellm import completion
+            
+            response = completion(
+                model="ollama/llama3.1",
+                messages=[{"role": "user", "content": full_prompt}],
+                base_url="http://localhost:11434"
+            )
+            
+            result = response.choices[0].message.content
+            logger.debug(f"LLM response received for {self.name}: {result[:100] if result else 'None'}...")
+            
             return str(result)
         except Exception as e:
-            logger.error(f"Task execution failed for {self.name}: {e}")
+            logger.error(f"Task execution failed for {self.name}: {e}", exc_info=True)
             raise
     
     def _log_processing(
@@ -352,7 +372,7 @@ class BaseAgent(ABC):
             "goal": self.agent.goal,
             "llm_provider": self.llm_provider,
             "tools_count": len(self.agent.tools) if self.agent.tools else 0,
-            "verbose": verbose,
+            "verbose": self.agent.verbose,
         }
     
     async def health_check(self) -> Dict[str, Any]:

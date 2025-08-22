@@ -69,7 +69,7 @@ app.include_router(chat_router)
 async def root():
     """Root endpoint with API information."""
     return {
-        "message": "🦆 Duck Therapy API",
+        "message": "Duck Therapy API",
         "description": "Multi-agent psychological support system",
         "version": "1.0.0",
         "docs": "/docs",

@@ -11,7 +11,7 @@ agents:
       敏锐地捕捉情绪变化、识别关键主题，并评估用户的心理需求。
       你具备深厚的心理学理论基础和丰富的实践经验。
     llm_provider: "ollama"  # Use local Deepseek model
-    model_override: "deepseek-r1-7B-Q5:latest"  # Local Deepseek model
+    model_override: "llama3.1"  # Local Deepseek model
     temperature: 0.3  # Lower temperature for more consistent analysis
     max_tokens: 1000
     tools:
@@ -32,7 +32,7 @@ agents:
       你会适当使用一些可爱的语气词，但不会过度卖萌。
       你的目标是给用户带来温暖和安全感。
     llm_provider: "ollama"  # Use local Deepseek model
-    model_override: "deepseek-r1-7B-Q5:latest"  # Local Deepseek model
+    model_override: "llama3.1"  # Local Deepseek model
     temperature: 0.7  # Balanced creativity and consistency
     max_tokens: 2000
     tools:
@@ -56,7 +56,7 @@ agents:
       用户需要什么样的内容来获得安慰、鼓励或放松。
       你能精准匹配内容与情绪的关联度。
     llm_provider: "ollama"  # Use local Deepseek model
-    model_override: "deepseek-r1-7B-Q5:latest"  # Local Deepseek model
+    model_override: "llama3.1"  # Local Deepseek model
     temperature: 0.5
     max_tokens: 1500
     tools:
@@ -75,7 +75,7 @@ agents:
       正念冥想、呼吸技巧等多种心理调节方法。
       你善于将专业技巧转化为简单易懂的日常练习。
     llm_provider: "ollama"  # Use local Deepseek model
-    model_override: "deepseek-r1-7B-Q5:latest"  # Local Deepseek model
+    model_override: "llama3.1"  # Local Deepseek model
     temperature: 0.4  # Conservative for safety
     max_tokens: 2500
     tools:
@@ -100,7 +100,7 @@ agents:
       发现积极的变化和成长点。你总是以鼓励的视角
       来解读用户的情绪数据，帮助用户看到自己的进步。
     llm_provider: "ollama"
-    model_override: "deepseek-r1-7B-Q5:latest"
+    model_override: "llama3.1"
     temperature: 0.6
     max_tokens: 3000
     tools:

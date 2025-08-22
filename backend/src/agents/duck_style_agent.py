@@ -118,28 +118,38 @@ class DuckStyleAgent(BaseAgent):
                     }
                 )
             
+            logger.debug(f"DuckStyleAgent: Processing message for session {input_data.session_id}")
+            
             # Get task template from YAML
             task_template = config_loader.get_task_template("duck_response_generation")
             if not task_template:
                 raise ValueError("Duck response generation task template not found")
             
+            logger.debug("DuckStyleAgent: Task template loaded successfully")
+            
             # Prepare context for LLM
             context_data = self._prepare_context(input_data)
+            logger.debug(f"DuckStyleAgent: Context prepared: {list(context_data.keys())}")
             
             # Format task description with actual data
             task_description = task_template["description"].format(**context_data)
+            logger.debug("DuckStyleAgent: Task description formatted successfully")
             
             # Execute LLM generation
+            logger.debug("DuckStyleAgent: Starting LLM execution")
             llm_result = await self._execute_task(
                 task_description=task_description,
                 expected_output=task_template["expected_output"],
                 context=self._build_personality_context()
             )
+            logger.debug(f"DuckStyleAgent: LLM result received: {llm_result[:100] if llm_result else 'None'}...")
             
             # Enhance and validate the response
+            logger.debug("DuckStyleAgent: Starting response enhancement")
             duck_response = self._enhance_duck_response(
                 llm_result, input_data.emotion_analysis, input_data.response_style
             )
+            logger.debug(f"DuckStyleAgent: Enhanced response: {duck_response[:100] if duck_response else 'None'}...")
             
             return BaseAgentOutput(
                 success=True,
@@ -152,7 +162,7 @@ class DuckStyleAgent(BaseAgent):
             )
             
         except Exception as e:
-            logger.error(f"Duck style agent processing failed: {e}")
+            logger.error(f"Duck style agent processing failed at step: {e}", exc_info=True)
             
             # Fallback to template-based response
             try:
@@ -223,11 +233,20 @@ class DuckStyleAgent(BaseAgent):
             f"特色元素：{', '.join(self.special_elements)}",
             "",
             "回复要求：",
-            "1. 使用温暖、治愈的语气",
-            "2. 适当使用'鸭鸭'自称",
-            "3. 回复要简洁但有温度",
-            "4. 以鼓励和支持为主",
-            "5. 结尾要温暖自然"
+            "1. 像朋友一样自然对话，绝对不要提及任何分析过程",
+            "2. 使用温暖、治愈的语气",
+            "3. 适当使用'鸭鸭'自称",
+            "4. 回复要简洁但有温度",
+            "5. 以鼓励和支持为主",
+            "6. 结尾要温暖自然",
+            "",
+            "严格禁止使用的词语：",
+            "- '根据你的情绪分析'",
+            "- '从你的话中分析'",
+            "- '情绪分析显示'",
+            "- '分析结果'等任何分析性词汇",
+            "",
+            "记住：你是朋友，不是分析师！"
         ]
         
         return "\n".join(context_parts)
@@ -334,6 +353,26 @@ class DuckStyleAgent(BaseAgent):
         """Final validation and cleanup of response."""
         # Remove extra spaces
         response = re.sub(r'\s+', ' ', response).strip()
+        
+        # Remove technical/analytical phrases that break the natural conversation
+        analytical_phrases = [
+            r"根据你的情绪分析[，。]?",
+            r"从你的话中分析[，。]?", 
+            r"通过分析你的.*?[，。]",
+            r"情绪分析显示[，。]?",
+            r"分析结果表明[，。]?",
+            r"从情绪角度来看[，。]?",
+            r"心理学上来说[，。]?",
+            r"根据心理分析[，。]?"
+        ]
+        
+        for pattern in analytical_phrases:
+            response = re.sub(pattern, "", response, flags=re.IGNORECASE)
+        
+        # Clean up any resulting double spaces or awkward punctuation
+        response = re.sub(r'\s+', ' ', response).strip()
+        response = re.sub(r'[，。]{2,}', '。', response)
+        response = re.sub(r'^[，。]+', '', response)
         
         # Ensure proper punctuation
         if not response.endswith(('。', '！', '～', '哦', '呢', '呀')):

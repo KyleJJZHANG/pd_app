@@ -75,7 +75,7 @@ async def main():
     else:
         print("FAILED: API test failed!")
         print("\nTroubleshooting:")
-        print("1. Make sure Ollama is running: ollama run deepseek-r1-7B-Q5:latest")
+        print("1. Make sure Ollama is running: ollama run llama3.1")
         print("2. Make sure backend is running: python start.py")
         print("3. Check server logs for detailed errors")
 

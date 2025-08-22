@@ -17,16 +17,18 @@ task_templates:
       4. 心理需求评估（如：安慰、鼓励、建议等）
       5. 紧急程度评估（1-5级）
     expected_output: |
-      JSON格式的情绪分析结果，包含：
-      - sentiment: 情绪极性
-      - intensity: 强度值
-      - primary_emotions: 主要情绪列表
-      - secondary_emotions: 次要情绪列表
-      - keywords: 关键词列表
-      - topics: 话题列表
-      - psychological_needs: 心理需求列表
-      - urgency_level: 紧急程度
-      - confidence: 分析置信度
+      严格按照以下JSON格式返回结果，不要添加任何其他文本：
+      {
+        "sentiment": "positive/neutral/negative",
+        "intensity": 0.5,
+        "confidence": 0.8,
+        "primary_emotions": ["开心", "满足"],
+        "secondary_emotions": ["兴奋"],
+        "keywords": ["关键词1", "关键词2"],
+        "topics": ["话题1", "话题2"],
+        "psychological_needs": ["安慰", "倾听"],
+        "urgency_level": 2
+      }
     agent: "listener_agent"
     timeout: 15
     priority: "high"
@@ -34,7 +36,7 @@ task_templates:
   duck_response_generation:
     name: "鸭鸭回复生成任务"
     description: |
-      基于情绪分析结果，生成温暖治愈的鸭鸭风格回复。
+      作为温暖治愈的心理鸭鸭，自然回应用户消息。
       
       用户消息：{user_message}
       情绪分析：{emotion_analysis}
@@ -42,13 +44,15 @@ task_templates:
       心理建议：{therapy_suggestions}
       
       请生成符合鸭鸭性格的温暖回复，要求：
-      1. 使用温和、理解、包容的语气
-      2. 适当使用可爱的语气词（但不过度）
-      3. 针对用户情绪给予恰当的回应
-      4. 如有推荐内容或建议，自然地融入回复中
-      5. 以温暖鼓励的话语结尾
+      1. 像朋友一样自然对话，不要提及"情绪分析"等技术词汇
+      2. 使用温和、理解、包容的语气
+      3. 适当使用可爱的语气词（但不过度）
+      4. 根据用户情绪自然地给予恰当回应，但不要直接说出分析过程
+      5. 如有推荐内容或建议，像朋友聊天一样自然融入
+      6. 以温暖鼓励的话语结尾
+      7. 避免使用"根据你的情绪分析"、"从你的话中分析"等分析性语言
     expected_output: |
-      鸭鸭风格的文字回复，温暖自然，符合IP形象
+      鸭鸭风格的自然对话回复，温暖治愈，像朋友聊天一样亲切
     agent: "duck_style_agent"
     timeout: 20
     priority: "high"

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Image, Video, BarChart3, ArrowLeft } from 'lucide-react';
+import { Send, Image, Video, BarChart3, ArrowLeft, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -14,6 +14,7 @@ const Chat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [showEmotionReport, setShowEmotionReport] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const storageService = StorageService.getInstance();
@@ -49,7 +50,7 @@ const Chat: React.FC = () => {
 
 
   const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || isLoading) return;
 
     const messageText = inputText.trim();
     const userMessage: Message = {
@@ -62,6 +63,7 @@ const Chat: React.FC = () => {
     setMessages(prev => [...prev, userMessage]);
     storageService.saveMessage(userMessage);
     setInputText('');
+    setIsLoading(true);
 
     // 情绪分析
     const emotionTags = emotionAnalyzer.analyzeText(messageText);
@@ -118,6 +120,8 @@ const Chat: React.FC = () => {
         };
         setMessages(prev => [...prev, errorMessage]);
         storageService.saveMessage(errorMessage);
+      } finally {
+        setIsLoading(false);
       }
     }, 1000);
   };
@@ -215,6 +219,39 @@ const Chat: React.FC = () => {
             </div>
           </div>
         ))}
+        
+        {/* 鸭鸭思考中的加载状态 */}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="max-w-xs lg:max-w-md">
+              <div className="flex items-center mb-1">
+                <span className="text-lg mr-1">🦆</span>
+                <span className="text-xs text-gray-500">心理鸭</span>
+              </div>
+              
+              <Card className="bg-white border-amber-200">
+                <CardContent className="p-3">
+                  {/* <div className="flex items-center space-x-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                    <span className="text-sm text-gray-600">鸭鸭正在思考中...</span>
+                  </div> */}
+                  
+                  {/* 思考动画点点 */}
+                  <div className="flex space-x-1 mt-2">
+                    <div className="w-2 h-2 bg-amber-300 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
+                    <div className="w-2 h-2 bg-amber-400 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
+                    <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <div className="text-xs text-gray-400 mt-1 px-2">
+                {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+          </div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
 
@@ -225,16 +262,21 @@ const Chat: React.FC = () => {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="和鸭鸭说说心里话..."
+            placeholder={isLoading ? "鸭鸭正在回复中..." : "和鸭鸭说说心里话..."}
             className="flex-1 border-amber-200 focus:border-amber-400"
+            disabled={isLoading}
           />
           <Button
             onClick={handleSendMessage}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isLoading}
             size="icon"
-            className="bg-amber-500 hover:bg-amber-600 text-white"
+            className="bg-amber-500 hover:bg-amber-600 text-white disabled:bg-gray-300"
           >
-            <Send size={18} />
+            {isLoading ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Send size={18} />
+            )}
           </Button>
         </div>
       </div>

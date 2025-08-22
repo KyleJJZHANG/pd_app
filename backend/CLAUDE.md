@@ -44,7 +44,7 @@ pylint **/*.py
 curl http://localhost:8000/health
 
 # Start Ollama with Deepseek model (required before starting backend)
-ollama run deepseek-r1-7B-Q5:latest
+ollama run llama3.1
 ```
 
 # Core Application Structure
@@ -103,7 +103,7 @@ DATABASE_URL=sqlite:///./duck_therapy.db  # Development
 
 # Local LLM (Ollama) Configuration
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=deepseek-r1-7B-Q5:latest
+OLLAMA_MODEL=llama3.1
 OLLAMA_TIMEOUT=30
 
 # LLM Provider Settings (configured to use Ollama only)
