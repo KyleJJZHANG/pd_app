@@ -1,0 +1,24 @@
+# Test Requirements for Duck Therapy Chat API
+# Install these dependencies for running the test suite
+
+# Async HTTP client for Python test script
+aiohttp>=3.8.0
+
+# JSON handling and data validation
+pydantic>=2.0.0
+
+# Additional testing utilities
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.10.0
+
+# HTTP testing utilities
+httpx>=0.24.0
+requests>=2.28.0
+
+# Development and debugging
+loguru>=0.7.0
+rich>=13.0.0
+
+# Optional: Performance testing
+locust>=2.14.0  # For load testing if needed

@@ -5,7 +5,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { Message, TimelineEntry } from '../data';
-import { generateDuckReply, greetingMessage } from '../data/chatReplies';
+import { HybridChatService } from '../services/hybridChatService';
 import StorageService from '../services/storage';
 import { EmotionAnalyzer } from '../services/emotionAnalyzer';
 import EmotionReport from '../components/EmotionReport';
@@ -18,6 +18,7 @@ const Chat: React.FC = () => {
   const navigate = useNavigate();
   const storageService = StorageService.getInstance();
   const emotionAnalyzer = EmotionAnalyzer.getInstance();
+  const hybridChatService = HybridChatService.getInstance();
 
   useEffect(() => {
     // 加载历史消息
@@ -27,7 +28,7 @@ const Chat: React.FC = () => {
       const welcomeMessage: Message = {
         id: '1',
         role: 'duck',
-        text: greetingMessage,
+        text: hybridChatService.getGreetingMessage(),
         timestamp: new Date()
       };
       setMessages([welcomeMessage]);
@@ -89,16 +90,35 @@ const Chat: React.FC = () => {
     };
     storageService.saveTimelineEntry(timelineEntry);
 
-    // 模拟鸭鸭思考时间
-    setTimeout(() => {
-      const duckReply = generateDuckReply(messageText);
-      const duckMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        ...duckReply,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, duckMessage]);
-      storageService.saveMessage(duckMessage);
+    // 生成鸭鸭回复（API 优先，本地回退）
+    setTimeout(async () => {
+      try {
+        const replyResult = await hybridChatService.generateReply(messageText);
+        const duckMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          ...replyResult.message,
+          timestamp: new Date()
+        };
+        
+        setMessages(prev => [...prev, duckMessage]);
+        storageService.saveMessage(duckMessage);
+        
+        // 如果使用了 API 模式，可以在控制台输出额外信息
+        if (replyResult.source === 'api' && replyResult.apiData) {
+          console.log('API 回复数据:', replyResult.apiData);
+        }
+      } catch (error) {
+        console.error('生成回复失败:', error);
+        // 出错时显示错误消息
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'duck',
+          text: '抱歉，鸭鸭暂时无法回复，请稍后再试～',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        storageService.saveMessage(errorMessage);
+      }
     }, 1000);
   };
 

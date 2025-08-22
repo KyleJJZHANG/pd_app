@@ -1,0 +1,7 @@
+{
+    "python.defaultInterpreterPath": "C:\\Users\\kylez\\anaconda3\\envs\\duck_therapy\\python.exe",
+    "python.terminal.activateEnvironment": true,
+    "python.analysis.extraPaths": [
+        "C:\\Users\\kylez\\anaconda3\\envs\\duck_therapy\\Lib\\site-packages"
+    ]
+}

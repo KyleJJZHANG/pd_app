@@ -1,0 +1,189 @@
+# Task Configuration for Duck Therapy System
+# This file defines task templates and workflows for different scenarios
+
+task_templates:
+  emotion_analysis:
+    name: "情绪分析任务"
+    description: |
+      分析用户消息的情绪状态和心理需求。
+      
+      用户消息：{user_message}
+      上下文：{context}
+      
+      请提供详细的情绪分析，包括：
+      1. 情绪极性（正面/中性/负面）和强度（0-1）
+      2. 具体情绪标签（如：开心、焦虑、疲惫等）
+      3. 关键词提取和话题识别
+      4. 心理需求评估（如：安慰、鼓励、建议等）
+      5. 紧急程度评估（1-5级）
+    expected_output: |
+      JSON格式的情绪分析结果，包含：
+      - sentiment: 情绪极性
+      - intensity: 强度值
+      - primary_emotions: 主要情绪列表
+      - secondary_emotions: 次要情绪列表
+      - keywords: 关键词列表
+      - topics: 话题列表
+      - psychological_needs: 心理需求列表
+      - urgency_level: 紧急程度
+      - confidence: 分析置信度
+    agent: "listener_agent"
+    timeout: 15
+    priority: "high"
+
+  duck_response_generation:
+    name: "鸭鸭回复生成任务"
+    description: |
+      基于情绪分析结果，生成温暖治愈的鸭鸭风格回复。
+      
+      用户消息：{user_message}
+      情绪分析：{emotion_analysis}
+      推荐内容：{content_recommendations}
+      心理建议：{therapy_suggestions}
+      
+      请生成符合鸭鸭性格的温暖回复，要求：
+      1. 使用温和、理解、包容的语气
+      2. 适当使用可爱的语气词（但不过度）
+      3. 针对用户情绪给予恰当的回应
+      4. 如有推荐内容或建议，自然地融入回复中
+      5. 以温暖鼓励的话语结尾
+    expected_output: |
+      鸭鸭风格的文字回复，温暖自然，符合IP形象
+    agent: "duck_style_agent"
+    timeout: 20
+    priority: "high"
+
+  content_recommendation:
+    name: "内容推荐任务"
+    description: |
+      基于用户情绪状态推荐相关的漫画和视频内容。
+      
+      情绪分析结果：{emotion_analysis}
+      用户偏好：{user_preferences}
+      最近查看历史：{recent_content}
+      
+      请推荐最贴合用户当前情绪的内容：
+      1. 分析情绪与内容的匹配度
+      2. 考虑用户历史偏好
+      3. 避免重复推荐最近查看的内容
+      4. 提供推荐理由说明
+    expected_output: |
+      推荐内容列表，包含内容ID、类型、相关度分数和推荐理由
+    agent: "content_recall_agent"
+    timeout: 10
+    priority: "medium"
+
+  therapy_suggestion:
+    name: "心理建议任务"
+    description: |
+      基于用户情绪状态提供合适的心理调节建议。
+      
+      情绪分析：{emotion_analysis}
+      紧急程度：{urgency_level}
+      用户历史：{user_history}
+      
+      请提供科学、安全的心理调节建议：
+      1. 根据情绪类型选择合适的技巧
+      2. 提供具体的步骤指导
+      3. 说明预期效果和注意事项
+      4. 确保建议的安全性和适用性
+    expected_output: |
+      结构化的心理建议，包含技巧名称、步骤、时长、适用情况
+    agent: "therapy_tips_agent"
+    timeout: 25
+    priority: "medium"
+    conditions:
+      - emotion_intensity > 0.6
+      - urgency_level >= 3
+
+  daily_report_generation:
+    name: "每日报告生成任务"
+    description: |
+      生成用户的每日情绪分析报告。
+      
+      会话数据：{session_data}
+      分析时间段：{time_period}
+      历史对比：{historical_data}
+      
+      请生成温暖鼓励的每日情绪报告：
+      1. 分析当日情绪趋势和主导情绪
+      2. 识别积极变化和成长点
+      3. 提供温和的改进建议
+      4. 生成鸭鸭的个性化鼓励话语
+      5. 与历史数据进行对比分析
+    expected_output: |
+      完整的每日报告，包含情绪分析、成长洞察、建议和鼓励
+    agent: "report_agent"
+    timeout: 30
+    priority: "low"
+
+# Workflow definitions
+workflows:
+  basic_chat_flow:
+    name: "基础聊天流程"
+    description: "处理用户聊天消息的基本流程"
+    steps:
+      - task: "emotion_analysis"
+        required: true
+        timeout: 15
+      - task: "duck_response_generation" 
+        required: true
+        timeout: 20
+        depends_on: ["emotion_analysis"]
+    parallel_tasks: []
+    
+  enhanced_chat_flow:
+    name: "增强聊天流程"
+    description: "包含内容推荐和心理建议的完整流程"
+    steps:
+      - task: "emotion_analysis"
+        required: true
+        timeout: 15
+    parallel_tasks:
+      - task: "content_recommendation"
+        required: false
+        timeout: 10
+        depends_on: ["emotion_analysis"]
+      - task: "therapy_suggestion"
+        required: false
+        timeout: 25
+        depends_on: ["emotion_analysis"]
+        conditions:
+          - "emotion_intensity > 0.6"
+    final_step:
+      - task: "duck_response_generation"
+        required: true
+        timeout: 20
+        depends_on: ["emotion_analysis", "content_recommendation", "therapy_suggestion"]
+
+  daily_report_flow:
+    name: "每日报告生成流程"
+    description: "生成用户每日情绪报告"
+    steps:
+      - task: "daily_report_generation"
+        required: true
+        timeout: 30
+    parallel_tasks: []
+
+# Task execution settings
+execution_settings:
+  default_timeout: 30
+  max_retries: 3
+  retry_delay: 1  # seconds
+  parallel_execution: true
+  fail_fast: false
+  
+# Priority levels
+priority_levels:
+  high: 1
+  medium: 2  
+  low: 3
+
+# Conditional execution rules
+conditions:
+  emotion_intensity_high: "emotion_intensity > 0.7"
+  emotion_intensity_medium: "emotion_intensity > 0.4"
+  negative_sentiment: "sentiment == 'negative'"
+  positive_sentiment: "sentiment == 'positive'"
+  urgency_high: "urgency_level >= 4"
+  urgency_medium: "urgency_level >= 2"
