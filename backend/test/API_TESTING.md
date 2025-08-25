@@ -9,7 +9,7 @@ Before running any tests, ensure the following are set up:
 ### 1. Ollama Server
 ```bash
 # Start Ollama with the Deepseek model
-ollama run llama3.1
+ollama run qwen2.5
 ```
 
 ### 2. Backend Server
@@ -261,7 +261,7 @@ http://localhost:8000/docs
 **Symptoms:** 500 errors during message processing
 **Solutions:**
 1. Check Ollama is running: `ollama ps`
-2. Verify model is loaded: `ollama run llama3.1`
+2. Verify model is loaded: `ollama run qwen2.5`
 3. Check server logs for detailed errors
 
 ### Issue: Slow Responses

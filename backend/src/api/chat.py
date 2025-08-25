@@ -6,13 +6,13 @@ Handles therapeutic chat interactions using multi-agent workflows.
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, AsyncGenerator
 from datetime import datetime
 import json
 import asyncio
 from uuid import uuid4
 
-from ..services.crew_manager import crew_manager, WorkflowStatus
+from ..services.crew_manager import crew_manager, WorkflowStatus, StreamChunk, StreamChunkType
 from ..models.message import Message
 from loguru import logger
 
@@ -313,14 +313,33 @@ async def list_sessions(limit: int = 20, offset: int = 0):
 @router.post("/stream")
 async def stream_message(message: ChatMessage):
     """
-    Stream a message response (for real-time chat experience).
+    Stream a message response with real-time progress updates.
     
-    This endpoint provides server-sent events for streaming responses.
+    Uses optimized streaming workflow with caching and performance monitoring.
     """
+    # Validate input immediately - return 422 for empty messages
+    if not message.text or not message.text.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Message text cannot be empty"
+        )
+    
+    if not message.session_id or not message.session_id.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Session ID is required"
+        )
+    
     async def generate_stream():
         try:
-            # Send initial acknowledgment
-            yield f"data: {json.dumps({'type': 'start', 'message': 'Processing message...'})}\n\n"
+            # Ensure session exists
+            if message.session_id not in chat_sessions:
+                chat_sessions[message.session_id] = {
+                    "created_at": datetime.now(),
+                    "last_activity": datetime.now(),
+                    "messages": [],
+                    "emotion_history": []
+                }
             
             # Prepare input data
             input_data = {
@@ -328,37 +347,41 @@ async def stream_message(message: ChatMessage):
                 "context": message.context or [],
                 "user_preferences": message.user_preferences or {},
                 "response_style": message.response_style,
-                "analysis_depth": message.analysis_depth
+                "analysis_depth": message.analysis_depth,
+                "recent_content": [],
+                "user_history": chat_sessions[message.session_id].get("emotion_history", [])
             }
             
-            # Execute workflow
-            yield f"data: {json.dumps({'type': 'progress', 'message': 'Analyzing emotions...'})}\n\n"
+            # Use the optimized streaming workflow
+            logger.info(f"Starting streaming chat for session {message.session_id}")
             
-            workflow_result = await crew_manager.execute_workflow(
+            async for chunk in crew_manager.execute_workflow_stream(
                 workflow_name=message.workflow_type,
                 input_data=input_data,
                 session_id=message.session_id
-            )
+            ):
+                # Convert StreamChunk to SSE format
+                chunk_data = {
+                    "type": chunk.type.value,
+                    "timestamp": chunk.timestamp.isoformat(),
+                    **(chunk.data or {})
+                }
+                
+                # Ensure all datetime objects are serialized
+                chunk_data = json.loads(json.dumps(chunk_data, default=str))
+                
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+                
+                # Store final response data when complete
+                if chunk.type == StreamChunkType.RESPONSE_END:
+                    await _store_stream_session_data(
+                        message.session_id,
+                        message.text,
+                        chunk.data,
+                        message.workflow_type
+                    )
             
-            if workflow_result.status == WorkflowStatus.FAILED:
-                yield f"data: {json.dumps({'type': 'error', 'message': workflow_result.error})}\n\n"
-                return
-            
-            # Send progress updates
-            yield f"data: {json.dumps({'type': 'progress', 'message': 'Generating response...'})}\n\n"
-            
-            # Send final response
-            final_output = workflow_result.final_output or {}
-            response_data = {
-                "type": "response",
-                "text": final_output.get("response_text", "鸭鸭暂时无法回复，请稍后再试哦～"),
-                "emotion_analysis": final_output.get("emotion_analysis"),
-                "execution_time_ms": workflow_result.total_execution_time_ms,
-                "success_rate": workflow_result.success_rate
-            }
-            
-            yield f"data: {json.dumps(response_data)}\n\n"
-            yield f"data: {json.dumps({'type': 'end'})}\n\n"
+            logger.info(f"Streaming completed for session {message.session_id}")
             
         except Exception as e:
             logger.error(f"Stream processing failed: {e}")
@@ -366,9 +389,72 @@ async def stream_message(message: ChatMessage):
     
     return StreamingResponse(
         generate_stream(),
-        media_type="text/plain",
-        headers={"Cache-Control": "no-cache"}
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type"
+        }
     )
+
+
+async def _store_stream_session_data(
+    session_id: str,
+    user_text: str, 
+    response_data: Dict[str, Any],
+    workflow_type: str
+):
+    """Store streaming session data after response completion."""
+    try:
+        if session_id not in chat_sessions:
+            return
+            
+        # Generate message IDs
+        user_message_id = str(uuid4())
+        assistant_message_id = str(uuid4())
+        timestamp_now = datetime.now()
+        
+        # Store user message
+        user_message_obj = {
+            "id": user_message_id,
+            "text": user_text,
+            "type": "user",
+            "timestamp": timestamp_now.isoformat()
+        }
+        
+        # Store assistant response
+        assistant_message_obj = {
+            "id": assistant_message_id,
+            "text": response_data.get("response_text", ""),
+            "type": "assistant",
+            "timestamp": timestamp_now.isoformat(),
+            "emotion_analysis": response_data.get("emotion_analysis"),
+            "workflow_used": workflow_type,
+            "execution_time_ms": response_data.get("execution_time_ms", 0)
+        }
+        
+        # Add to session
+        chat_sessions[session_id]["messages"].extend([
+            user_message_obj,
+            assistant_message_obj
+        ])
+        
+        # Store emotion analysis in history
+        if response_data.get("emotion_analysis"):
+            chat_sessions[session_id]["emotion_history"].append({
+                "timestamp": timestamp_now.isoformat(),
+                "analysis": response_data["emotion_analysis"]
+            })
+            
+        # Update session activity
+        chat_sessions[session_id]["last_activity"] = timestamp_now
+        
+        logger.debug(f"Session data stored for streaming response: {session_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to store streaming session data: {e}")
 
 
 async def _update_session_analytics(session_id: str, emotion_analysis: Optional[Dict[str, Any]]):
@@ -388,3 +474,41 @@ async def _update_session_analytics(session_id: str, emotion_analysis: Optional[
         
     except Exception as e:
         logger.error(f"Failed to update session analytics: {e}")
+
+
+@router.get("/performance/stats")
+async def get_performance_stats():
+    """
+    Get current performance statistics and metrics.
+    
+    Returns detailed performance data including cache usage, response times, etc.
+    """
+    try:
+        stats = crew_manager.get_performance_stats()
+        return {
+            "success": True,
+            "data": stats,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get performance stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve performance statistics")
+
+
+@router.post("/performance/optimize")
+async def optimize_performance():
+    """
+    Run performance optimization tasks.
+    
+    Cleans cache, warms up agents, and applies other optimizations.
+    """
+    try:
+        optimization_results = await crew_manager.optimize_performance()
+        return {
+            "success": True,
+            "optimizations": optimization_results,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Performance optimization failed: {e}")
+        raise HTTPException(status_code=500, detail="Performance optimization failed")

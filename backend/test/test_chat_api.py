@@ -38,6 +38,9 @@ class ChatAPITester:
             await self.test_get_emotion_history()
             await self.test_list_sessions()
             await self.test_streaming_message()
+            await self.test_streaming_error_scenarios()
+            await self.test_concurrent_streaming()
+            await self.test_streaming_performance_metrics()
             await self.test_sentiment_validation()
             await self.test_natural_response_validation()
             await self.test_clear_session()
@@ -170,43 +173,470 @@ class ChatAPITester:
             self.log_result("list_sessions", False, str(e))
     
     async def test_streaming_message(self):
-        """Test streaming message endpoint."""
+        """Test streaming message endpoint with comprehensive scenarios."""
         print("\nTesting Streaming Message")
         
-        message_data = {
-            "text": "这是一个测试流式响应的消息",
-            "session_id": f"stream-{self.session_id}"
-        }
+        # Test different streaming scenarios
+        streaming_tests = [
+            {
+                "name": "Basic Streaming",
+                "data": {
+                    "text": "这是一个测试流式响应的消息",
+                    "session_id": f"stream-{self.session_id}"
+                },
+                "description": "Basic streaming test"
+            },
+            {
+                "name": "Emotional Streaming", 
+                "data": {
+                    "text": "我今天感觉很焦虑，工作压力很大，希望得到一些建议",
+                    "session_id": f"stream-emotional-{self.session_id}",
+                    "analysis_depth": "detailed"
+                },
+                "description": "Emotional message with detailed analysis"
+            },
+            {
+                "name": "Long Message Streaming",
+                "data": {
+                    "text": "我最近一直在思考人生的意义，工作让我感到疲惫，家庭关系也有些紧张。我想知道如何能够找到内心的平静，如何处理这些复杂的情绪。有时候感觉自己像是在迷雾中行走，看不清前方的道路。我需要一些指导和建议来帮助我度过这个困难时期。",
+                    "session_id": f"stream-long-{self.session_id}",
+                    "response_style": "detailed",
+                    "analysis_depth": "detailed"
+                },
+                "description": "Long complex message with detailed requirements"
+            }
+        ]
+        
+        successful_streaming_tests = 0
+        
+        for i, test_case in enumerate(streaming_tests):
+            print(f"\n   >> {test_case['name']} ({test_case['description']})")
+            print(f"   Message: {test_case['data']['text'][:50]}...")
+            
+            try:
+                start_time = time.time()
+                async with self.session.post(
+                    f"{self.base_url}/chat/stream",
+                    json=test_case['data']
+                ) as response:
+                    end_time = time.time()
+                    total_time = int((end_time - start_time) * 1000)
+                    
+                    if response.status == 200:
+                        print(f"   + Streaming response started...")
+                        
+                        # Track streaming data
+                        chunk_count = 0
+                        chunk_types = []
+                        emotion_data = None
+                        response_text = None
+                        
+                        async for line in response.content:
+                            line_str = line.decode('utf-8').strip()
+                            if line_str.startswith('data: '):
+                                chunk_count += 1
+                                data_str = line_str[6:]  # Remove 'data: ' prefix
+                                
+                                try:
+                                    data = json.loads(data_str)
+                                    chunk_type = data.get('type', 'unknown')
+                                    chunk_types.append(chunk_type)
+                                    
+                                    print(f"   >> Chunk {chunk_count}: {chunk_type}")
+                                    
+                                    # Collect specific data for validation
+                                    if chunk_type == 'emotion_result':
+                                        emotion_data = data.get('emotion_analysis')
+                                    elif chunk_type == 'response_end':
+                                        response_text = data.get('response_text')
+                                    elif chunk_type == 'complete':
+                                        print(f"      Stats: {data.get('stats', {})}")
+                                        break
+                                        
+                                except json.JSONDecodeError:
+                                    print(f"   !! Invalid JSON in chunk {chunk_count}")
+                                    continue
+                        
+                        # Validate streaming completeness
+                        expected_chunk_types = ['emotion_start', 'emotion_result', 'response_start', 'response_end', 'complete']
+                        missing_types = [t for t in expected_chunk_types if t not in chunk_types]
+                        
+                        if not missing_types and response_text:
+                            print(f"   + Streaming completed successfully")
+                            print(f"   + Total chunks: {chunk_count}, Duration: {total_time}ms")
+                            print(f"   + Response preview: {response_text[:50]}...")
+                            
+                            if emotion_data:
+                                print(f"   + Emotion analysis: {emotion_data.get('sentiment', 'N/A')}")
+                            
+                            successful_streaming_tests += 1
+                        else:
+                            print(f"   - Incomplete streaming - Missing: {missing_types}")
+                            if not response_text:
+                                print(f"   - No response text received")
+                    else:
+                        print(f"   - Streaming failed: {response.status}")
+                        error_text = await response.text()
+                        print(f"      Error: {error_text}")
+                        
+            except Exception as e:
+                print(f"   - Streaming test error: {e}")
+        
+        # Log overall streaming test results
+        total_streaming_tests = len(streaming_tests)
+        if successful_streaming_tests == total_streaming_tests:
+            print(f"\n+ All {successful_streaming_tests}/{total_streaming_tests} streaming tests passed!")
+            self.log_result("streaming_message", True, f"All {successful_streaming_tests} tests passed")
+        else:
+            print(f"\n- Only {successful_streaming_tests}/{total_streaming_tests} streaming tests passed")
+            self.log_result("streaming_message", False, f"Only {successful_streaming_tests}/{total_streaming_tests} passed")
+    
+    async def test_streaming_error_scenarios(self):
+        """Test streaming endpoint error handling scenarios."""
+        print("\nTesting Streaming Error Scenarios")
+        
+        error_tests = [
+            {
+                "name": "Empty Message Streaming",
+                "data": {
+                    "text": "",
+                    "session_id": f"error-stream-{int(time.time())}"
+                },
+                "expected_status": 422,
+                "description": "Empty message should return validation error"
+            },
+            {
+                "name": "Invalid Session ID Streaming",
+                "data": {
+                    "text": "测试无效会话ID的流式响应",
+                    "session_id": None
+                },
+                "expected_status": 422,
+                "description": "None session_id should return validation error"
+            },
+            {
+                "name": "Extremely Long Message Streaming",
+                "data": {
+                    "text": "测试" * 10000,  # Very long message
+                    "session_id": f"long-stream-{int(time.time())}"
+                },
+                "expected_status": 200,  # Should handle gracefully
+                "description": "Very long message streaming test"
+            }
+        ]
+        
+        successful_error_tests = 0
+        
+        for i, test_case in enumerate(error_tests):
+            print(f"\n   >> {test_case['name']} ({test_case['description']})")
+            
+            try:
+                start_time = time.time()
+                async with self.session.post(
+                    f"{self.base_url}/chat/stream",
+                    json=test_case['data']
+                ) as response:
+                    end_time = time.time()
+                    total_time = int((end_time - start_time) * 1000)
+                    
+                    expected_status = test_case['expected_status']
+                    
+                    if response.status == expected_status:
+                        if response.status == 200:
+                            # For successful responses, verify streaming works
+                            chunk_count = 0
+                            received_complete = False
+                            
+                            async for line in response.content:
+                                line_str = line.decode('utf-8').strip()
+                                if line_str.startswith('data: '):
+                                    chunk_count += 1
+                                    try:
+                                        data = json.loads(line_str[6:])
+                                        chunk_type = data.get('type', 'unknown')
+                                        
+                                        if chunk_type == 'complete':
+                                            received_complete = True
+                                            break
+                                        elif chunk_type == 'error':
+                                            print(f"   !! Received error chunk: {data}")
+                                            break
+                                    except json.JSONDecodeError:
+                                        continue
+                            
+                            if received_complete or chunk_count > 0:
+                                print(f"   + Error scenario handled gracefully - {chunk_count} chunks in {total_time}ms")
+                                successful_error_tests += 1
+                            else:
+                                print(f"   - No streaming data received for valid scenario")
+                        else:
+                            # For error responses, just check status code
+                            error_response = await response.text()
+                            print(f"   + Correct error status {response.status} - {error_response[:100]}...")
+                            successful_error_tests += 1
+                    else:
+                        print(f"   - Expected status {expected_status}, got {response.status}")
+                        error_text = await response.text()
+                        print(f"      Error: {error_text[:200]}...")
+                        
+            except Exception as e:
+                print(f"   - Error test exception: {e}")
+        
+        # Log error scenario test results
+        total_error_tests = len(error_tests)
+        if successful_error_tests == total_error_tests:
+            print(f"\n+ All {successful_error_tests}/{total_error_tests} streaming error tests passed!")
+            self.log_result("streaming_error_scenarios", True, f"All {successful_error_tests} error tests passed")
+        else:
+            print(f"\n- Only {successful_error_tests}/{total_error_tests} streaming error tests passed")
+            self.log_result("streaming_error_scenarios", False, f"Only {successful_error_tests}/{total_error_tests} passed")
+    
+    async def test_concurrent_streaming(self):
+        """Test concurrent streaming requests to validate server stability."""
+        print("\nTesting Concurrent Streaming")
+        
+        # Define concurrent test messages
+        concurrent_messages = [
+            {
+                "text": f"并发测试消息 {i+1} - 我感觉有点紧张",
+                "session_id": f"concurrent-{i+1}-{int(time.time())}"
+            }
+            for i in range(3)  # Test with 3 concurrent streams
+        ]
+        
+        print(f"   >> Starting {len(concurrent_messages)} concurrent streaming requests...")
+        
+        async def single_stream_test(message_data, test_id):
+            """Single streaming test for concurrent execution."""
+            try:
+                start_time = time.time()
+                async with self.session.post(
+                    f"{self.base_url}/chat/stream",
+                    json=message_data
+                ) as response:
+                    end_time = time.time()
+                    total_time = int((end_time - start_time) * 1000)
+                    
+                    if response.status == 200:
+                        chunk_count = 0
+                        completed = False
+                        
+                        async for line in response.content:
+                            line_str = line.decode('utf-8').strip()
+                            if line_str.startswith('data: '):
+                                chunk_count += 1
+                                try:
+                                    data = json.loads(line_str[6:])
+                                    if data.get('type') == 'complete':
+                                        completed = True
+                                        break
+                                except json.JSONDecodeError:
+                                    continue
+                        
+                        return {
+                            "test_id": test_id,
+                            "success": completed,
+                            "chunks": chunk_count,
+                            "duration": total_time,
+                            "status": response.status
+                        }
+                    else:
+                        return {
+                            "test_id": test_id,
+                            "success": False,
+                            "chunks": 0,
+                            "duration": total_time,
+                            "status": response.status,
+                            "error": await response.text()
+                        }
+            except Exception as e:
+                return {
+                    "test_id": test_id,
+                    "success": False,
+                    "chunks": 0,
+                    "duration": 0,
+                    "error": str(e)
+                }
+        
+        # Execute concurrent streaming requests
+        tasks = [
+            single_stream_test(msg, i+1) 
+            for i, msg in enumerate(concurrent_messages)
+        ]
         
         try:
+            start_time = time.time()
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            end_time = time.time()
+            total_concurrent_time = int((end_time - start_time) * 1000)
+            
+            successful_concurrent = 0
+            total_chunks = 0
+            
+            print(f"   + Concurrent execution completed in {total_concurrent_time}ms")
+            
+            for result in results:
+                if isinstance(result, dict) and result.get('success'):
+                    successful_concurrent += 1
+                    total_chunks += result.get('chunks', 0)
+                    print(f"   + Stream {result['test_id']}: {result['chunks']} chunks in {result['duration']}ms")
+                else:
+                    if isinstance(result, dict):
+                        print(f"   - Stream {result.get('test_id', 'unknown')}: {result.get('error', 'Failed')}")
+                    else:
+                        print(f"   - Stream failed with exception: {result}")
+            
+            # Log concurrent streaming test results
+            total_concurrent_tests = len(concurrent_messages)
+            if successful_concurrent == total_concurrent_tests:
+                print(f"\n+ All {successful_concurrent}/{total_concurrent_tests} concurrent streaming tests passed!")
+                print(f"   Total chunks processed: {total_chunks}")
+                print(f"   Average concurrency performance: {total_concurrent_time/total_concurrent_tests:.1f}ms per stream")
+                self.log_result("concurrent_streaming", True, f"All {successful_concurrent} concurrent tests passed")
+            else:
+                print(f"\n- Only {successful_concurrent}/{total_concurrent_tests} concurrent streaming tests passed")
+                self.log_result("concurrent_streaming", False, f"Only {successful_concurrent}/{total_concurrent_tests} passed")
+                
+        except Exception as e:
+            print(f"\n- Concurrent streaming test failed: {e}")
+            self.log_result("concurrent_streaming", False, f"Concurrent test exception: {e}")
+    
+    async def test_streaming_performance_metrics(self):
+        """Test streaming performance metrics and caching behavior."""
+        print("\nTesting Streaming Performance Metrics")
+        
+        # Test message designed to trigger caching behavior
+        test_message = {
+            "text": "我今天心情不错，但是有点紧张即将到来的面试",
+            "session_id": f"performance-test-{int(time.time())}",
+            "analysis_depth": "detailed"
+        }
+        
+        print("   >> Testing first-time execution (cache miss)...")
+        
+        # First execution - should be cache miss
+        try:
+            start_time = time.time()
+            first_execution_chunks = []
+            
             async with self.session.post(
                 f"{self.base_url}/chat/stream",
-                json=message_data
+                json=test_message
             ) as response:
                 if response.status == 200:
-                    print("Streaming response started...")
-                    chunk_count = 0
                     async for line in response.content:
                         line_str = line.decode('utf-8').strip()
                         if line_str.startswith('data: '):
-                            chunk_count += 1
-                            data_str = line_str[6:]  # Remove 'data: ' prefix
                             try:
-                                data = json.loads(data_str)
-                                print(f"   📦 Chunk {chunk_count}: {data.get('type', 'unknown')}")
-                                if data.get('type') == 'end':
+                                data = json.loads(line_str[6:])
+                                first_execution_chunks.append(data)
+                                
+                                # Look for cache status information
+                                if data.get('type') == 'emotion_result':
+                                    cache_status = data.get('cache_hit', False)
+                                    print(f"   >> First execution - Cache hit: {cache_status}")
+                                elif data.get('type') == 'complete':
+                                    stats = data.get('stats', {})
+                                    print(f"   >> First execution stats: {stats}")
                                     break
                             except json.JSONDecodeError:
                                 continue
                     
-                    print(f"Streaming completed with {chunk_count} chunks")
-                    self.log_result("streaming_message", True, f"Chunks: {chunk_count}")
+                    first_execution_time = int((time.time() - start_time) * 1000)
+                    print(f"   + First execution completed in {first_execution_time}ms with {len(first_execution_chunks)} chunks")
                 else:
-                    print(f"Streaming failed: {response.status}")
-                    self.log_result("streaming_message", False, f"Status: {response.status}")
+                    print(f"   - First execution failed: {response.status}")
+                    self.log_result("streaming_performance_metrics", False, f"First execution failed: {response.status}")
+                    return
         except Exception as e:
-            print(f"Streaming error: {e}")
-            self.log_result("streaming_message", False, str(e))
+            print(f"   - First execution error: {e}")
+            self.log_result("streaming_performance_metrics", False, f"First execution error: {e}")
+            return
+        
+        # Wait a moment before second execution
+        await asyncio.sleep(1)
+        
+        print("   >> Testing second execution (potential cache hit)...")
+        
+        # Second execution - might be cache hit
+        try:
+            start_time = time.time()
+            second_execution_chunks = []
+            
+            async with self.session.post(
+                f"{self.base_url}/chat/stream",
+                json=test_message
+            ) as response:
+                if response.status == 200:
+                    async for line in response.content:
+                        line_str = line.decode('utf-8').strip()
+                        if line_str.startswith('data: '):
+                            try:
+                                data = json.loads(line_str[6:])
+                                second_execution_chunks.append(data)
+                                
+                                # Look for cache status information
+                                if data.get('type') == 'emotion_result':
+                                    cache_status = data.get('cache_hit', False)
+                                    print(f"   >> Second execution - Cache hit: {cache_status}")
+                                elif data.get('type') == 'complete':
+                                    stats = data.get('stats', {})
+                                    print(f"   >> Second execution stats: {stats}")
+                                    break
+                            except json.JSONDecodeError:
+                                continue
+                    
+                    second_execution_time = int((time.time() - start_time) * 1000)
+                    print(f"   + Second execution completed in {second_execution_time}ms with {len(second_execution_chunks)} chunks")
+                    
+                    # Compare performance
+                    if second_execution_time < first_execution_time:
+                        improvement = ((first_execution_time - second_execution_time) / first_execution_time) * 100
+                        print(f"   >> Performance improvement: {improvement:.1f}% faster on second execution")
+                    else:
+                        print(f"   >> Performance comparison: Second execution took {second_execution_time - first_execution_time}ms more")
+                    
+                else:
+                    print(f"   - Second execution failed: {response.status}")
+                    self.log_result("streaming_performance_metrics", False, f"Second execution failed: {response.status}")
+                    return
+        except Exception as e:
+            print(f"   - Second execution error: {e}")
+            self.log_result("streaming_performance_metrics", False, f"Second execution error: {e}")
+            return
+        
+        # Test performance statistics endpoint if available
+        print("   >> Testing performance statistics endpoint...")
+        try:
+            async with self.session.get(f"{self.base_url}/chat/performance/stats") as response:
+                if response.status == 200:
+                    stats_data = await response.json()
+                    print(f"   + Performance stats retrieved:")
+                    print(f"      Cache hit rate: {stats_data.get('cache_hit_rate', 'N/A')}%")
+                    print(f"      Average response time: {stats_data.get('average_response_time', 'N/A')}ms")
+                    print(f"      Total requests: {stats_data.get('total_requests', 'N/A')}")
+                else:
+                    print(f"   !! Performance stats endpoint returned: {response.status}")
+        except Exception as e:
+            print(f"   !! Could not retrieve performance stats: {e}")
+        
+        # Validate streaming chunk consistency
+        if len(first_execution_chunks) > 0 and len(second_execution_chunks) > 0:
+            # Check that both executions have similar chunk structure
+            first_types = [chunk.get('type') for chunk in first_execution_chunks]
+            second_types = [chunk.get('type') for chunk in second_execution_chunks]
+            
+            if first_types == second_types:
+                print(f"   + Chunk structure consistency verified between executions")
+                self.log_result("streaming_performance_metrics", True, f"Performance test completed successfully")
+            else:
+                print(f"   !! Chunk structure differs between executions:")
+                print(f"      First: {first_types}")
+                print(f"      Second: {second_types}")
+                self.log_result("streaming_performance_metrics", False, "Chunk structure inconsistency")
+        else:
+            print(f"   - Insufficient streaming data for comparison")
+            self.log_result("streaming_performance_metrics", False, "Insufficient streaming data")
     
     async def test_sentiment_validation(self):
         """Test sentiment validation fix for various emotional messages."""
@@ -267,40 +697,40 @@ class ChatAPITester:
                         emotion_analysis = data.get('emotion_analysis', {})
                         detected_sentiment = emotion_analysis.get('sentiment', 'unknown')
                         
-                        print(f"   ✓ Response received in {execution_time}ms")
-                        print(f"   ✓ Detected sentiment: {detected_sentiment}")
+                        print(f"   + Response received in {execution_time}ms")
+                        print(f"   + Detected sentiment: {detected_sentiment}")
                         
                         # Validate that sentiment is one of the allowed values
                         valid_sentiments = ["positive", "negative", "neutral"]
                         if detected_sentiment in valid_sentiments:
-                            print(f"   ✓ Sentiment validation passed")
+                            print(f"   + Sentiment validation passed")
                             successful_tests += 1
                             
                             # Additional validation details
                             if emotion_analysis.get('primary_emotions'):
                                 emotions = emotion_analysis.get('primary_emotions', [])
-                                print(f"   ✓ Primary emotions: {emotions}")
+                                print(f"   + Primary emotions: {emotions}")
                             
                             if emotion_analysis.get('intensity'):
                                 intensity = emotion_analysis.get('intensity', 0)
-                                print(f"   ✓ Emotion intensity: {intensity}")
+                                print(f"   + Emotion intensity: {intensity}")
                         else:
-                            print(f"   ✗ Invalid sentiment detected: {detected_sentiment}")
+                            print(f"   - Invalid sentiment detected: {detected_sentiment}")
                             print(f"     Expected one of: {valid_sentiments}")
                     else:
                         error_text = await response.text()
-                        print(f"   ✗ API call failed: {response.status}")
+                        print(f"   - API call failed: {response.status}")
                         print(f"     Error: {error_text}")
                         
             except Exception as e:
-                print(f"   ✗ Test error: {e}")
+                print(f"   - Test error: {e}")
         
         # Log overall sentiment validation test result
         if successful_tests == len(test_messages):
-            print(f"\n✓ All {successful_tests}/{len(test_messages)} sentiment validation tests passed!")
+            print(f"\n+ All {successful_tests}/{len(test_messages)} sentiment validation tests passed!")
             self.log_result("sentiment_validation", True, f"All {successful_tests} tests passed")
         else:
-            print(f"\n✗ Only {successful_tests}/{len(test_messages)} sentiment validation tests passed")
+            print(f"\n- Only {successful_tests}/{len(test_messages)} sentiment validation tests passed")
             self.log_result("sentiment_validation", False, f"Only {successful_tests}/{len(test_messages)} passed")
         
         # Additional test for the specific '+' sentiment issue that was fixed
@@ -322,22 +752,22 @@ class ChatAPITester:
                 expected_valid = normalized in ['positive', 'negative', 'neutral']
                 if not expected_valid:
                     normalization_passed = False
-                    print(f"   ✗ Normalization failed for '{case}' -> '{normalized}'")
+                    print(f"   - Normalization failed for '{case}' -> '{normalized}'")
                 else:
-                    print(f"   ✓ '{case}' -> '{normalized}'")
+                    print(f"   + '{case}' -> '{normalized}'")
             
             if normalization_passed:
-                print(f"   ✓ Direct sentiment normalization tests passed!")
+                print(f"   + Direct sentiment normalization tests passed!")
                 self.log_result("sentiment_normalization", True, "All normalization tests passed")
             else:
-                print(f"   ✗ Some sentiment normalization tests failed!")
+                print(f"   - Some sentiment normalization tests failed!")
                 self.log_result("sentiment_normalization", False, "Some normalization tests failed")
                 
         except ImportError as e:
             print(f"   ! Could not test direct agent normalization: {e}")
             self.log_result("sentiment_normalization", False, f"Import error: {e}")
         except Exception as e:
-            print(f"   ✗ Direct normalization test error: {e}")
+            print(f"   - Direct normalization test error: {e}")
             self.log_result("sentiment_normalization", False, str(e))
     
     async def test_natural_response_validation(self):
@@ -405,7 +835,7 @@ class ChatAPITester:
                         execution_time = int((end_time - start_time) * 1000)
                         
                         response_text = data.get('response_text', '')
-                        print(f"   ✓ Response received in {execution_time}ms")
+                        print(f"   + Response received in {execution_time}ms")
                         print(f"   Response: {response_text[:80]}...")
                         
                         # Check for forbidden analytical phrases
@@ -415,25 +845,25 @@ class ChatAPITester:
                                 found_forbidden.append(phrase)
                         
                         if not found_forbidden:
-                            print(f"   ✓ Natural response validation passed")
+                            print(f"   + Natural response validation passed")
                             successful_tests += 1
                         else:
-                            print(f"   ✗ Found analytical phrases: {found_forbidden}")
+                            print(f"   - Found analytical phrases: {found_forbidden}")
                             print(f"     Full response: {response_text}")
                     else:
                         error_text = await response.text()
-                        print(f"   ✗ API call failed: {response.status}")
+                        print(f"   - API call failed: {response.status}")
                         print(f"     Error: {error_text}")
                         
             except Exception as e:
-                print(f"   ✗ Test error: {e}")
+                print(f"   - Test error: {e}")
         
         # Log overall natural response validation test result
         if successful_tests == len(test_messages):
-            print(f"\n✓ All {successful_tests}/{len(test_messages)} natural response validation tests passed!")
+            print(f"\n+ All {successful_tests}/{len(test_messages)} natural response validation tests passed!")
             self.log_result("natural_response_validation", True, f"All {successful_tests} tests passed")
         else:
-            print(f"\n✗ Only {successful_tests}/{len(test_messages)} natural response validation tests passed")
+            print(f"\n- Only {successful_tests}/{len(test_messages)} natural response validation tests passed")
             self.log_result("natural_response_validation", False, f"Only {successful_tests}/{len(test_messages)} passed")
         
         # Test the analytical phrase removal function directly
@@ -462,24 +892,24 @@ class ChatAPITester:
                         remaining_forbidden.append(phrase)
                 
                 if not remaining_forbidden:
-                    print(f"   ✓ Test {i}: Analytical phrases successfully removed")
+                    print(f"   + Test {i}: Analytical phrases successfully removed")
                 else:
                     removal_passed = False
-                    print(f"   ✗ Test {i}: Still contains: {remaining_forbidden}")
+                    print(f"   - Test {i}: Still contains: {remaining_forbidden}")
                     print(f"     Cleaned response: {cleaned}")
             
             if removal_passed:
-                print(f"   ✓ Direct analytical phrase removal tests passed!")
+                print(f"   + Direct analytical phrase removal tests passed!")
                 self.log_result("analytical_phrase_removal", True, "All removal tests passed")
             else:
-                print(f"   ✗ Some analytical phrase removal tests failed!")
+                print(f"   - Some analytical phrase removal tests failed!")
                 self.log_result("analytical_phrase_removal", False, "Some removal tests failed")
                 
         except ImportError as e:
             print(f"   ! Could not test direct phrase removal: {e}")
             self.log_result("analytical_phrase_removal", False, f"Import error: {e}")
         except Exception as e:
-            print(f"   ✗ Direct phrase removal test error: {e}")
+            print(f"   - Direct phrase removal test error: {e}")
             self.log_result("analytical_phrase_removal", False, str(e))
     
     async def test_clear_session(self):
@@ -623,7 +1053,7 @@ async def main():
     
     print(f"Testing Duck Therapy API at: {base_url}")
     print("Make sure the following are running:")
-    print("   1. Ollama server with llama3.1 model")
+    print("   1. Ollama server with  model")
     print("   2. Duck Therapy backend server")
     print("\n Starting tests in 3 seconds...")
     

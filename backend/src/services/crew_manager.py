@@ -4,10 +4,11 @@ CrewAI Manager for Duck Therapy System
 Orchestrates multi-agent workflows with intelligent LLM routing and task execution.
 Configured via YAML for maximum flexibility.
 """
-from typing import Dict, Any, List, Optional, Type
+from typing import Dict, Any, List, Optional, Type, AsyncGenerator, Union
 import asyncio
 import time
-from datetime import datetime
+import hashlib
+from datetime import datetime, timedelta
 from enum import Enum
 
 from crewai import Crew, Process
@@ -28,6 +29,42 @@ class WorkflowStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     PARTIALLY_COMPLETED = "partially_completed"
+
+
+class StreamChunkType(str, Enum):
+    """Stream chunk types for real-time responses."""
+    EMOTION_START = "emotion_start"
+    EMOTION_RESULT = "emotion_result"
+    RESPONSE_START = "response_start"
+    RESPONSE_CHUNK = "response_chunk"
+    RESPONSE_END = "response_end"
+    ERROR = "error"
+    COMPLETE = "complete"
+
+
+class StreamChunk(BaseModel):
+    """Stream chunk for real-time responses."""
+    type: StreamChunkType
+    data: Optional[Dict[str, Any]] = None
+    timestamp: datetime = None
+    
+    def __init__(self, **data):
+        if data.get('timestamp') is None:
+            data['timestamp'] = datetime.now()
+        super().__init__(**data)
+
+
+class PerformanceMetrics(BaseModel):
+    """Performance metrics for workflow execution."""
+    workflow_name: str
+    total_time_ms: int
+    emotion_analysis_time_ms: int
+    response_generation_time_ms: int
+    cache_hits: int
+    cache_misses: int
+    llm_calls: int
+    start_time: datetime
+    end_time: datetime
 
 
 class TaskResult(BaseModel):
@@ -60,10 +97,24 @@ class CrewManager:
         self.agents: Dict[str, BaseAgent] = {}
         self.crews: Dict[str, Crew] = {}
         
+        # Performance optimization components
+        self.emotion_cache: Dict[str, Dict[str, Any]] = {}
+        self.response_cache: Dict[str, str] = {}
+        self.cache_ttl = timedelta(minutes=30)  # Cache TTL
+        self.performance_metrics: List[PerformanceMetrics] = []
+        
+        # Performance counters
+        self._cache_hits = 0
+        self._cache_misses = 0
+        self._llm_calls = 0
+        
         # Initialize agents
         self._initialize_agents()
         
-        logger.info("CrewManager initialized successfully")
+        # Flag to track if warm-up is needed
+        self._needs_warmup = True
+        
+        logger.info("CrewManager initialized successfully with performance optimizations")
     
     def _initialize_agents(self):
         """Initialize all available agents."""
@@ -84,6 +135,87 @@ class CrewManager:
         except Exception as e:
             logger.error(f"Failed to initialize agents: {e}")
             raise
+    
+    async def _warm_up_agents(self):
+        """Warm up agents with sample data for better initial performance."""
+        try:
+            logger.info("Starting agent warm-up process...")
+            
+            # Warm up listener agent
+            if "listener_agent" in self.agents:
+                warm_up_input = ListenerInput(
+                    session_id="warmup_session",
+                    timestamp=datetime.now(),
+                    text="你好",
+                    analysis_depth="basic"
+                )
+                await self.agents["listener_agent"].safe_process(warm_up_input)
+                logger.debug("ListenerAgent warmed up")
+            
+            # Warm up duck style agent  
+            if "duck_style_agent" in self.agents:
+                warm_up_input = DuckStyleInput(
+                    session_id="warmup_session",
+                    timestamp=datetime.now(),
+                    user_message="你好",
+                    emotion_analysis={"sentiment": "neutral", "intensity": 0.5},
+                    response_style="standard"
+                )
+                await self.agents["duck_style_agent"].safe_process(warm_up_input)
+                logger.debug("DuckStyleAgent warmed up")
+                
+            logger.info("Agent warm-up completed")
+        except Exception as e:
+            logger.warning(f"Agent warm-up failed (non-critical): {e}")
+    
+    def _generate_cache_key(self, text: str, context: List[str] = None) -> str:
+        """Generate cache key for emotion analysis."""
+        content = text
+        if context:
+            content += "|" + "|".join(context[-3:])  # Last 3 context messages
+        return hashlib.md5(content.encode()).hexdigest()
+    
+    def _get_cached_emotion_analysis(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        """Get cached emotion analysis result."""
+        if cache_key not in self.emotion_cache:
+            self._cache_misses += 1
+            return None
+            
+        cached_data = self.emotion_cache[cache_key]
+        
+        # Check TTL
+        if datetime.now() - cached_data.get("timestamp", datetime.min) > self.cache_ttl:
+            del self.emotion_cache[cache_key]
+            self._cache_misses += 1
+            return None
+            
+        self._cache_hits += 1
+        logger.debug(f"Cache hit for emotion analysis: {cache_key[:8]}...")
+        return cached_data["data"]
+    
+    def _cache_emotion_analysis(self, cache_key: str, data: Dict[str, Any]):
+        """Cache emotion analysis result."""
+        self.emotion_cache[cache_key] = {
+            "data": data,
+            "timestamp": datetime.now()
+        }
+        
+        # Clean old cache entries if cache gets too large
+        if len(self.emotion_cache) > 1000:
+            self._clean_expired_cache()
+    
+    def _clean_expired_cache(self):
+        """Clean expired cache entries."""
+        now = datetime.now()
+        expired_keys = [
+            key for key, value in self.emotion_cache.items()
+            if now - value.get("timestamp", datetime.min) > self.cache_ttl
+        ]
+        
+        for key in expired_keys:
+            del self.emotion_cache[key]
+            
+        logger.debug(f"Cleaned {len(expired_keys)} expired cache entries")
     
     async def execute_workflow(
         self, 
@@ -110,6 +242,12 @@ class CrewManager:
             if not workflow_config:
                 raise ValueError(f"Workflow '{workflow_name}' not found")
             
+            # Warm up agents on first execution
+            if self._needs_warmup:
+                logger.info("Performing first-time agent warm-up...")
+                await self._warm_up_agents()
+                self._needs_warmup = False
+                
             logger.info(f"Starting workflow: {workflow_name}")
             
             # Execute workflow steps
@@ -141,6 +279,10 @@ class CrewManager:
                 result.status = WorkflowStatus.FAILED
             
             logger.info(f"Workflow {workflow_name} completed with {success_rate:.2%} success rate")
+            
+            # Record performance metrics
+            self._record_performance_metrics(workflow_name, result, start_time)
+            
             return result
             
         except Exception as e:
@@ -154,34 +296,116 @@ class CrewManager:
                 error=str(e)
             )
     
+    async def execute_workflow_stream(
+        self, 
+        workflow_name: str, 
+        input_data: Dict[str, Any],
+        session_id: str
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """
+        Execute workflow with streaming response for real-time feedback.
+        
+        Args:
+            workflow_name: Name of workflow to execute
+            input_data: Input data for the workflow
+            session_id: Session identifier
+            
+        Yields:
+            StreamChunk objects with real-time progress updates
+        """
+        start_time = time.time()
+        
+        try:
+            logger.info(f"Starting streaming workflow: {workflow_name}")
+            
+            if workflow_name == "basic_chat_flow":
+                async for chunk in self._execute_basic_chat_flow_stream(input_data, session_id):
+                    yield chunk
+            else:
+                yield StreamChunk(
+                    type=StreamChunkType.ERROR,
+                    data={"error": f"Streaming not supported for workflow: {workflow_name}"}
+                )
+                return
+                
+            yield StreamChunk(
+                type=StreamChunkType.COMPLETE,
+                data={
+                    "total_time_ms": int((time.time() - start_time) * 1000),
+                    "cache_stats": {
+                        "hits": self._cache_hits,
+                        "misses": self._cache_misses
+                    }
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Streaming workflow execution failed: {e}")
+            yield StreamChunk(
+                type=StreamChunkType.ERROR,
+                data={"error": str(e)}
+            )
+    
     async def _execute_basic_chat_flow(
         self, 
         input_data: Dict[str, Any], 
         session_id: str
     ) -> WorkflowResult:
-        """Execute basic chat workflow: emotion analysis → duck response."""
+        """Execute optimized basic chat workflow with caching."""
         task_results = []
         
-        # Step 1: Emotion Analysis
-        emotion_task_result = await self._execute_task(
-            task_name="emotion_analysis",
-            agent_name="listener_agent",
-            input_data=ListenerInput(
-                session_id=session_id,
-                timestamp=datetime.now(),
-                text=input_data.get("user_message", ""),
-                context=input_data.get("context", []),
-                analysis_depth=input_data.get("analysis_depth", "standard")
+        # Generate cache key for emotion analysis
+        user_message = input_data.get("user_message", "")
+        context = input_data.get("context", [])
+        cache_key = self._generate_cache_key(user_message, context)
+        
+        # Step 1: Emotion Analysis with caching
+        cached_emotion_data = self._get_cached_emotion_analysis(cache_key)
+        
+        if cached_emotion_data:
+            # Use cached result
+            emotion_task_result = TaskResult(
+                task_name="emotion_analysis",
+                success=True,
+                data=cached_emotion_data,
+                execution_time_ms=0,  # Cache hit is instantaneous
+                agent_used="listener_agent",
+                llm_provider_used="cache"
             )
-        )
+            logger.debug("Using cached emotion analysis")
+        else:
+            # Execute emotion analysis
+            emotion_start_time = time.time()
+            emotion_task_result = await self._execute_task(
+                task_name="emotion_analysis",
+                agent_name="listener_agent",
+                input_data=ListenerInput(
+                    session_id=session_id,
+                    timestamp=datetime.now(),
+                    text=user_message,
+                    context=context,
+                    analysis_depth=input_data.get("analysis_depth", "standard")
+                )
+            )
+            
+            # Cache the result if successful
+            if emotion_task_result.success:
+                self._cache_emotion_analysis(cache_key, emotion_task_result.data)
+                
         task_results.append(emotion_task_result)
         
-        # Step 2: Duck Response Generation (depends on emotion analysis)
-        duck_input_data = {
-            "user_message": input_data.get("user_message", ""),
-            "emotion_analysis": emotion_task_result.data if emotion_task_result.success else {},
-            "response_style": input_data.get("response_style", "standard")
-        }
+        # Step 2: Duck Response Generation (optimized data transfer)
+        response_start_time = time.time()
+        
+        # Only pass essential emotion data to reduce transfer overhead
+        essential_emotion_data = {}
+        if emotion_task_result.success and emotion_task_result.data:
+            essential_emotion_data = {
+                "sentiment": emotion_task_result.data.get("sentiment", "neutral"),
+                "intensity": emotion_task_result.data.get("intensity", 0.5),
+                "primary_emotions": emotion_task_result.data.get("primary_emotions", []),
+                "urgency_level": emotion_task_result.data.get("urgency_level", 1)
+            }
         
         duck_task_result = await self._execute_task(
             task_name="duck_response_generation",
@@ -189,7 +413,9 @@ class CrewManager:
             input_data=DuckStyleInput(
                 session_id=session_id,
                 timestamp=datetime.now(),
-                **duck_input_data
+                user_message=user_message,
+                emotion_analysis=essential_emotion_data,
+                response_style=input_data.get("response_style", "standard")
             )
         )
         task_results.append(duck_task_result)
@@ -200,7 +426,11 @@ class CrewManager:
             final_output = {
                 "response_text": duck_task_result.data.get("text", ""),
                 "emotion_analysis": emotion_task_result.data if emotion_task_result.success else None,
-                "workflow_type": "basic_chat"
+                "workflow_type": "basic_chat",
+                "performance": {
+                    "used_cache": cached_emotion_data is not None,
+                    "cache_key": cache_key[:8] + "..." if cache_key else None
+                }
             }
         
         return WorkflowResult(
@@ -211,6 +441,158 @@ class CrewManager:
             success_rate=0.0,  # Will be updated by caller
             final_output=final_output
         )
+    
+    async def _execute_basic_chat_flow_stream(
+        self, 
+        input_data: Dict[str, Any], 
+        session_id: str
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """Execute basic chat workflow with streaming response."""
+        
+        user_message = input_data.get("user_message", "")
+        context = input_data.get("context", [])
+        
+        # Generate cache key for emotion analysis
+        cache_key = self._generate_cache_key(user_message, context)
+        
+        # Step 1: Emotion Analysis
+        yield StreamChunk(
+            type=StreamChunkType.EMOTION_START,
+            data={"message": "开始分析情绪..."}
+        )
+        
+        cached_emotion_data = self._get_cached_emotion_analysis(cache_key)
+        
+        if cached_emotion_data:
+            # Use cached result
+            emotion_data = cached_emotion_data
+            yield StreamChunk(
+                type=StreamChunkType.EMOTION_RESULT,
+                data={
+                    "emotion_analysis": emotion_data,
+                    "from_cache": True,
+                    "message": "情绪分析完成（缓存）"
+                }
+            )
+        else:
+            # Execute emotion analysis
+            emotion_start_time = time.time()
+            
+            try:
+                emotion_result = await self._execute_task(
+                    task_name="emotion_analysis",
+                    agent_name="listener_agent",
+                    input_data=ListenerInput(
+                        session_id=session_id,
+                        timestamp=datetime.now(),
+                        text=user_message,
+                        context=context,
+                        analysis_depth=input_data.get("analysis_depth", "standard")
+                    )
+                )
+                
+                if emotion_result.success:
+                    emotion_data = emotion_result.data
+                    self._cache_emotion_analysis(cache_key, emotion_data)
+                    
+                    yield StreamChunk(
+                        type=StreamChunkType.EMOTION_RESULT,
+                        data={
+                            "emotion_analysis": emotion_data,
+                            "from_cache": False,
+                            "execution_time_ms": int((time.time() - emotion_start_time) * 1000),
+                            "message": "情绪分析完成"
+                        }
+                    )
+                else:
+                    # Fallback to basic emotion data
+                    emotion_data = {"sentiment": "neutral", "intensity": 0.5}
+                    yield StreamChunk(
+                        type=StreamChunkType.EMOTION_RESULT,
+                        data={
+                            "emotion_analysis": emotion_data,
+                            "from_cache": False,
+                            "error": emotion_result.error,
+                            "message": "使用默认情绪分析"
+                        }
+                    )
+            except Exception as e:
+                emotion_data = {"sentiment": "neutral", "intensity": 0.5}
+                yield StreamChunk(
+                    type=StreamChunkType.EMOTION_RESULT,
+                    data={
+                        "emotion_analysis": emotion_data,
+                        "from_cache": False,
+                        "error": str(e),
+                        "message": "使用默认情绪分析（异常降级）"
+                    }
+                )
+        
+        # Step 2: Duck Response Generation
+        yield StreamChunk(
+            type=StreamChunkType.RESPONSE_START,
+            data={"message": "鸭鸭正在思考回复..."}
+        )
+        
+        response_start_time = time.time()
+        
+        # Prepare essential emotion data for response generation
+        essential_emotion_data = {
+            "sentiment": emotion_data.get("sentiment", "neutral"),
+            "intensity": emotion_data.get("intensity", 0.5),
+            "primary_emotions": emotion_data.get("primary_emotions", []),
+            "urgency_level": emotion_data.get("urgency_level", 1)
+        }
+        
+        try:
+            duck_result = await self._execute_task(
+                task_name="duck_response_generation",
+                agent_name="duck_style_agent",
+                input_data=DuckStyleInput(
+                    session_id=session_id,
+                    timestamp=datetime.now(),
+                    user_message=user_message,
+                    emotion_analysis=essential_emotion_data,
+                    response_style=input_data.get("response_style", "standard")
+                )
+            )
+            
+            if duck_result.success:
+                response_text = duck_result.data.get("text", "")
+                execution_time = int((time.time() - response_start_time) * 1000)
+                
+                yield StreamChunk(
+                    type=StreamChunkType.RESPONSE_END,
+                    data={
+                        "response_text": response_text,
+                        "emotion_analysis": emotion_data,
+                        "execution_time_ms": execution_time,
+                        "message": "回复生成完成"
+                    }
+                )
+            else:
+                # Provide fallback response instead of ERROR
+                yield StreamChunk(
+                    type=StreamChunkType.RESPONSE_END,
+                    data={
+                        "response_text": "抱歉，鸭鸭暂时无法回复，请稍后再试～",
+                        "execution_time_ms": int((time.time() - response_start_time) * 1000),
+                        "error": duck_result.error,
+                        "message": "使用默认回复（任务失败）"
+                    }
+                )
+                
+        except Exception as e:
+            # Provide fallback response instead of ERROR
+            yield StreamChunk(
+                type=StreamChunkType.RESPONSE_END,
+                data={
+                    "response_text": "抱歉，鸭鸭暂时无法回复，请稍后再试～",
+                    "execution_time_ms": int((time.time() - response_start_time) * 1000),
+                    "error": str(e),
+                    "message": "使用默认回复（异常降级）"
+                }
+            )
     
     async def _execute_enhanced_chat_flow(
         self, 
@@ -388,6 +770,10 @@ class CrewManager:
             logger.debug(f"Executing task {task_name} with agent {agent_name}")
             result = await agent.safe_process(input_data)
             
+            # Count LLM calls (if not from cache)
+            if result.llm_provider_used and result.llm_provider_used != "cache":
+                self._llm_calls += 1
+            
             execution_time = int((time.time() - start_time) * 1000)
             
             return TaskResult(
@@ -411,6 +797,40 @@ class CrewManager:
                 execution_time_ms=execution_time,
                 agent_used=agent_name
             )
+    
+    def _record_performance_metrics(
+        self, 
+        workflow_name: str, 
+        result: WorkflowResult, 
+        start_time: float
+    ):
+        """Record performance metrics for analysis."""
+        emotion_time = 0
+        response_time = 0
+        
+        for task in result.task_results:
+            if task.task_name == "emotion_analysis":
+                emotion_time = task.execution_time_ms
+            elif task.task_name == "duck_response_generation":
+                response_time = task.execution_time_ms
+        
+        metrics = PerformanceMetrics(
+            workflow_name=workflow_name,
+            total_time_ms=result.total_execution_time_ms,
+            emotion_analysis_time_ms=emotion_time,
+            response_generation_time_ms=response_time,
+            cache_hits=self._cache_hits,
+            cache_misses=self._cache_misses,
+            llm_calls=self._llm_calls,
+            start_time=datetime.fromtimestamp(start_time),
+            end_time=datetime.now()
+        )
+        
+        self.performance_metrics.append(metrics)
+        
+        # Keep only last 100 metrics to prevent memory bloat
+        if len(self.performance_metrics) > 100:
+            self.performance_metrics = self.performance_metrics[-100:]
     
     async def health_check(self) -> Dict[str, Any]:
         """
@@ -492,6 +912,83 @@ class CrewManager:
         except Exception as e:
             logger.error(f"Failed to reload configurations: {e}")
             raise
+    
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Get current performance statistics."""
+        if not self.performance_metrics:
+            return {
+                "total_requests": 0,
+                "average_response_time_ms": 0,
+                "cache_hit_rate": 0,
+                "recent_metrics": []
+            }
+        
+        recent_metrics = self.performance_metrics[-10:]  # Last 10 requests
+        
+        avg_total_time = sum(m.total_time_ms for m in recent_metrics) / len(recent_metrics)
+        avg_emotion_time = sum(m.emotion_analysis_time_ms for m in recent_metrics) / len(recent_metrics)
+        avg_response_time = sum(m.response_generation_time_ms for m in recent_metrics) / len(recent_metrics)
+        
+        total_cache_requests = self._cache_hits + self._cache_misses
+        cache_hit_rate = (self._cache_hits / total_cache_requests * 100) if total_cache_requests > 0 else 0
+        
+        return {
+            "total_requests": len(self.performance_metrics),
+            "average_response_time_ms": round(avg_total_time, 2),
+            "average_emotion_analysis_time_ms": round(avg_emotion_time, 2),
+            "average_response_generation_time_ms": round(avg_response_time, 2),
+            "cache_hit_rate": round(cache_hit_rate, 2),
+            "cache_stats": {
+                "hits": self._cache_hits,
+                "misses": self._cache_misses,
+                "total_entries": len(self.emotion_cache)
+            },
+            "llm_calls": self._llm_calls,
+            "recent_metrics": [
+                {
+                    "workflow": m.workflow_name,
+                    "total_time_ms": m.total_time_ms,
+                    "timestamp": m.end_time.isoformat()
+                }
+                for m in recent_metrics
+            ]
+        }
+    
+    async def optimize_performance(self) -> Dict[str, Any]:
+        """Run performance optimization tasks."""
+        optimization_results = {
+            "cache_cleaned": 0,
+            "agents_warmed": 0,
+            "optimizations_applied": []
+        }
+        
+        # Clean expired cache
+        old_cache_size = len(self.emotion_cache)
+        self._clean_expired_cache()
+        cleaned_entries = old_cache_size - len(self.emotion_cache)
+        optimization_results["cache_cleaned"] = cleaned_entries
+        
+        if cleaned_entries > 0:
+            optimization_results["optimizations_applied"].append(f"Cleaned {cleaned_entries} expired cache entries")
+        
+        # Warm up agents if needed
+        try:
+            await self._warm_up_agents()
+            optimization_results["agents_warmed"] = len(self.agents)
+            optimization_results["optimizations_applied"].append("Agents warmed up")
+        except Exception as e:
+            logger.warning(f"Agent warm-up during optimization failed: {e}")
+        
+        # Log performance stats
+        stats = self.get_performance_stats()
+        if stats["total_requests"] > 0:
+            logger.info(
+                f"Performance stats - Avg response: {stats['average_response_time_ms']}ms, "
+                f"Cache hit rate: {stats['cache_hit_rate']}%, "
+                f"Total requests: {stats['total_requests']}"
+            )
+        
+        return optimization_results
 
 
 # Global crew manager instance

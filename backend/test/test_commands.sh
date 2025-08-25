@@ -41,7 +41,7 @@ run_test() {
 
 # Wait for user confirmation
 echo -e "${YELLOW}Make sure the following are running:${NC}"
-echo "1. Ollama server with llama3.1 model"
+echo "1. Ollama server with  model"
 echo "2. Duck Therapy backend server at $BASE_URL"
 echo ""
 read -p "Press Enter to start tests or Ctrl+C to cancel..."

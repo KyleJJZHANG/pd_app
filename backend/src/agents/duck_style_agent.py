@@ -363,7 +363,9 @@ class DuckStyleAgent(BaseAgent):
             r"分析结果表明[，。]?",
             r"从情绪角度来看[，。]?",
             r"心理学上来说[，。]?",
-            r"根据心理分析[，。]?"
+            r"根据心理分析[，。]?",
+            r"情绪分析结果[，。]?",
+            r"分析你的情绪[，。]?"
         ]
         
         for pattern in analytical_phrases:

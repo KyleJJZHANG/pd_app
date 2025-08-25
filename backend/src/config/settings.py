@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     
     # Security Settings
     secret_key: str = Field(default="development-secret-key-change-in-production-32-chars", min_length=32)
-    cors_origins: List[str] = Field(default=["http://localhost:3000"])
+    cors_origins: List[str] = Field(default=["http://localhost:3000", "http://localhost:5173"])
     session_expire_minutes: int = 1440  # 24 hours
     
     # Rate Limiting
@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     
     # Ollama Configuration
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.1"
+    ollama_model: str = "qwen2.5"
     ollama_timeout: int = 30
     
     # Agent-specific LLM Configuration
