@@ -4,6 +4,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Scene } from '../data';
 import { scenes, getTodayScene } from '../data/scenes';
+import { warmQuotes } from '../data/quotes';
 
 const MapExplore: React.FC = () => {
   const [currentScene, setCurrentScene] = useState<Scene | null>(null);
@@ -12,44 +13,11 @@ const MapExplore: React.FC = () => {
 
   const todayScene = getTodayScene();
   
-  // 温暖的场景数据
-  const warmScenes = [
-    {
-      key: "lake",
-      title: "湖边坐一会儿",
-      emoji: "🏞️",
-      story: "湖面很平静，风把云推得很慢。和我一起，吸气 4 秒，呼气 6 秒。让心也像湖面一样宁静。",
-      color: "from-blue-100 to-cyan-100",
-      interaction: {
-        type: 'breathing' as const,
-        instruction: "跟着鸭鸭一起做深呼吸练习，感受内心的平静"
-      }
-    },
-    {
-      key: "forest",
-      title: "森林的轻语",
-      emoji: "🌲",
-      story: "树叶沙沙地响，像是在和你说悄悄话。我们一起数 10 片叶子，然后把担心轻轻放下。",
-      color: "from-green-100 to-emerald-100",
-      interaction: {
-        type: 'listening' as const,
-        instruction: "静静聆听森林的声音，让自然治愈你的心灵"
-      }
-    },
-    {
-      key: "cafe",
-      title: "温暖小咖啡馆",
-      emoji: "☕",
-      story: "空气里是奶香的味道，很温暖很安心。给自己 2 分钟，只做一件让你开心的小事。",
-      color: "from-amber-100 to-orange-100",
-      interaction: {
-        type: 'watching' as const,
-        instruction: "在这个温暖的角落，观察周围的美好细节"
-      }
-    }
-  ];
+  const currentWarmScene = scenes[step % scenes.length];
 
-  const currentWarmScene = warmScenes[step % warmScenes.length];
+  const getCurrentQuote = () => {
+    return warmQuotes[step % warmQuotes.length].text;
+  };
 
   const handleSceneEnter = (scene: Scene) => {
     setCurrentScene(scene);
@@ -94,7 +62,7 @@ const MapExplore: React.FC = () => {
               <ArrowLeft size={20} />
             </Button>
             <span className="text-2xl mr-2">🦆</span>
-            <h1 className="text-xl font-semibold text-amber-800">和鸭鸭一起走走</h1>
+            <h1 className="text-xl font-semibold text-amber-800">鸭鸭的治愈旅行</h1>
           </div>
         </div>
 
@@ -147,8 +115,8 @@ const MapExplore: React.FC = () => {
                   >
                     {isInteracting ? (
                       <div className="flex items-center justify-center">
-                        <div className="animate-pulse mr-2">💛</div>
-                        感受中...
+                        <div className="animate-pulse mr-2">🦆</div>
+                        鸭鸭陪着你...
                       </div>
                     ) : (
                       <div className="flex items-center justify-center">
@@ -163,7 +131,9 @@ const MapExplore: React.FC = () => {
                   {isInteracting && (
                     <div className="text-center animate-fade-in">
                       <p className="text-sm text-amber-700 mb-2">
-                        深呼吸，让心灵慢慢平静下来...
+                        {scene.interaction.type === 'breathing' && "慢慢呼吸，让心像湖水一样平静..."}
+                        {scene.interaction.type === 'listening' && "静静聆听，内心的声音最真实..."}
+                        {scene.interaction.type === 'watching' && "用心感受，这一刻只属于你..."}
                       </p>
                       <div className="flex justify-center">
                         <div className="w-16 h-16 rounded-full bg-gradient-to-r from-amber-200 to-yellow-200 flex items-center justify-center animate-ping">
@@ -174,13 +144,25 @@ const MapExplore: React.FC = () => {
                   )}
                   
                   {!isInteracting && (
-                    <Button
-                      onClick={handleNextScene}
-                      variant="outline"
-                      className="w-full border-amber-200 text-amber-700 hover:bg-amber-50 h-12 rounded-xl"
-                    >
-                      🌟 带我去下一个地方
-                    </Button>
+                    <div className="space-y-3">
+                      {/* 心理鸭金句 */}
+                      <div className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-xl p-4 border border-amber-100">
+                        <div className="flex items-start space-x-2">
+                          <span className="text-sm">🦆</span>
+                          <p className="text-sm text-amber-800 font-medium italic">
+                            "{getCurrentQuote()}"
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <Button
+                        onClick={handleNextScene}
+                        variant="outline"
+                        className="w-full border-amber-200 text-amber-700 hover:bg-amber-50 h-12 rounded-xl"
+                      >
+                        🚶‍♀️ 和鸭鸭继续旅行
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -281,8 +263,8 @@ const MapExplore: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-4">
       <div className="bg-white/80 backdrop-blur-md rounded-xl p-4 mb-6">
         <div className="text-center">
-          <h1 className="text-xl font-semibold text-gray-800 mb-1">一起走走</h1>
-          <p className="text-sm text-gray-600">和鸭鸭探索疗愈的场景</p>
+          <h1 className="text-xl font-semibold text-gray-800 mb-1">鸭鸭的治愈空间</h1>
+          <p className="text-sm text-gray-600">在这些场景里，找到内心的平静</p>
         </div>
       </div>
 

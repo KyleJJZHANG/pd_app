@@ -1,0 +1,4 @@
+claude mcp add chrome-mcp '{
+    "type": "http",
+    "url": "http://127.0.0.1:12306/mcp"
+}'

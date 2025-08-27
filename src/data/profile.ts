@@ -15,7 +15,7 @@ export interface UserProfile {
 
 const DEFAULT_PROFILE: UserProfile = {
   id: 'user_default',
-  nickname: '鸭鸭的朋友',
+  nickname: '大鑫',
   avatar: '🌟',
   bio: '和心理鸭一起成长的小伙伴',
   createdAt: new Date(),
