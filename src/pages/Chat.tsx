@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Image, Video, BarChart3, ArrowLeft, Loader2 } from 'lucide-react';
+import DuckIcon from '../components/ui/DuckIcon';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -151,7 +152,7 @@ const Chat: React.FC = () => {
             >
               <ArrowLeft size={20} />
             </Button>
-            <span className="text-2xl mr-2">🦆</span>
+            <DuckIcon size="lg" className="mr-2" />
             <h1 className="text-xl font-semibold text-amber-700">和鸭鸭聊聊</h1>
           </div>
           
@@ -178,7 +179,7 @@ const Chat: React.FC = () => {
             <div className={`max-w-xs lg:max-w-md`}>
               {message.role === 'duck' && (
                 <div className="flex items-center mb-1">
-                  <span className="text-lg mr-1">🦆</span>
+                  <DuckIcon size="sm" className="mr-1" />
                   <span className="text-xs text-gray-500">心理鸭</span>
                 </div>
               )}
@@ -225,7 +226,7 @@ const Chat: React.FC = () => {
           <div className="flex justify-start">
             <div className="max-w-xs lg:max-w-md">
               <div className="flex items-center mb-1">
-                <span className="text-lg mr-1">🦆</span>
+                <DuckIcon size="sm" className="mr-1" animated />
                 <span className="text-xs text-gray-500">心理鸭</span>
               </div>
               

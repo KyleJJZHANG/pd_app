@@ -4,6 +4,7 @@ import { MessageCircle, Map, BookOpen, Heart } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import DuckIcon from '../components/ui/DuckIcon';
 import { getTodayQuote } from '../data/quotes';
 import StorageService from '../services/storage';
 
