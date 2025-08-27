@@ -46,53 +46,25 @@ class DuckStyleAgent(BaseAgent):
     
     def _load_personality_guidelines(self):
         """Load duck personality guidelines from configuration."""
+        # 从 YAML 配置加载个性化设置，不再硬编码
         personality_traits = self.config.get("personality_traits", {})
         
-        self.tone_characteristics = personality_traits.get("语气特征", [
-            "温和", "理解", "包容", "鼓励"
-        ])
+        self.tone_characteristics = personality_traits.get("语气特征", [])
+        self.expression_style = personality_traits.get("表达方式", [])
+        self.avoid_content = personality_traits.get("避免内容", [])
+        self.special_elements = personality_traits.get("特色元素", [])
         
-        self.expression_style = personality_traits.get("表达方式", [
-            "简洁清晰", "情感丰富", "正向引导"
-        ])
-        
-        self.avoid_content = personality_traits.get("避免内容", [
-            "说教", "批判", "过度专业术语"
-        ])
-        
-        self.special_elements = personality_traits.get("特色元素", [
-            "适度使用鸭鸭相关比喻", "温暖的结尾语"
-        ])
-        
-        # Duck-specific language patterns
-        self.duck_expressions = {
-            "greetings": ["你好呀", "嗨～", "鸭鸭来了"],
-            "comfort": ["鸭鸭理解你", "给你一个温暖的拥抱", "鸭鸭会陪着你"],
-            "encouragement": ["你很棒哦", "鸭鸭为你骄傲", "继续加油呀"],
-            "endings": ["鸭鸭会一直陪着你哦～", "有什么都可以和鸭鸭说", "鸭鸭在这里"],
-            "transition": ["对了", "另外", "鸭鸭想说"],
-            "empathy": ["能感受到你的", "鸭鸭懂你的感受", "这样的心情很正常"]
-        }
+        # 从 YAML 配置加载鸭鸭专用表达词汇
+        self.duck_expressions = self.config.get("duck_expressions", {})
     
     def _load_safety_patterns(self):
-        """Load content safety patterns."""
-        self.inappropriate_patterns = [
-            r"自杀|自残|死亡|轻生",
-            r"暴力|伤害他人|报复",
-            r"违法|犯罪|不当行为",
-            r"极端|激进|仇恨"
-        ]
+        """Load content safety patterns from configuration."""
+        # 从 YAML 配置加载安全检查模式，不再硬编码
+        safety_patterns = self.config.get("safety_patterns", {})
         
-        self.medical_patterns = [
-            r"诊断|治疗|药物|医生",
-            r"病症|疾病|医疗|临床"
-        ]
-        
-        self.safety_responses = {
-            "crisis": "鸭鸭很担心你的安全。如果你正在经历危机，请立即联系专业帮助热线或身边的亲友。鸭鸭会一直在这里支持你。",
-            "medical": "鸭鸭不能提供医疗建议哦。如果你需要专业的医疗或心理治疗建议，建议咨询专业的医生或心理咨询师。",
-            "inappropriate": "鸭鸭觉得我们可以聊聊其他的话题呢。有什么开心的事情想和鸭鸭分享吗？"
-        }
+        self.inappropriate_patterns = safety_patterns.get("inappropriate_patterns", [])
+        self.medical_patterns = safety_patterns.get("medical_patterns", [])
+        self.safety_responses = safety_patterns.get("safety_responses", {})
     
     async def process(self, input_data: DuckStyleInput) -> BaseAgentOutput:
         """
@@ -350,25 +322,17 @@ class DuckStyleAgent(BaseAgent):
         return response
     
     def _validate_and_cleanup(self, response: str) -> str:
-        """Final validation and cleanup of response."""
+        """Final validation and cleanup of response using config-driven rules."""
         # Remove extra spaces
         response = re.sub(r'\s+', ' ', response).strip()
         
-        # Remove technical/analytical phrases that break the natural conversation
-        analytical_phrases = [
-            r"根据你的情绪分析[，。]?",
-            r"从你的话中分析[，。]?", 
-            r"通过分析你的.*?[，。]",
-            r"情绪分析显示[，。]?",
-            r"分析结果表明[，。]?",
-            r"从情绪角度来看[，。]?",
-            r"心理学上来说[，。]?",
-            r"根据心理分析[，。]?",
-            r"情绪分析结果[，。]?",
-            r"分析你的情绪[，。]?"
-        ]
+        # 从配置获取需要移除的分析性短语
+        enhancement_config = self.config.get("response_enhancement", {})
+        analytical_phrases = enhancement_config.get("analytical_phrases_to_remove", [])
         
-        for pattern in analytical_phrases:
+        # Remove technical/analytical phrases using config
+        for phrase in analytical_phrases:
+            pattern = phrase + r"[，。]?"
             response = re.sub(pattern, "", response, flags=re.IGNORECASE)
         
         # Clean up any resulting double spaces or awkward punctuation
@@ -376,12 +340,14 @@ class DuckStyleAgent(BaseAgent):
         response = re.sub(r'[，。]{2,}', '。', response)
         response = re.sub(r'^[，。]+', '', response)
         
-        # Ensure proper punctuation
-        if not response.endswith(('。', '！', '～', '哦', '呢', '呀')):
+        # Ensure proper punctuation using config
+        required_endings = enhancement_config.get("required_ending_chars", ["。"])
+        if not response.endswith(tuple(required_endings)):
             response += "。"
         
-        # Limit length
-        if len(response) > 200:
+        # Limit length using config
+        max_length = enhancement_config.get("max_response_length", 200)
+        if len(response) > max_length:
             sentences = response.split("。")
             response = "。".join(sentences[:2]) + "。"
         

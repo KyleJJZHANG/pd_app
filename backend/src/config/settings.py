@@ -51,10 +51,10 @@ class Settings(BaseSettings):
     anthropic_max_tokens: int = 2000
     anthropic_temperature: float = 0.7
     
-    # Ollama Configuration
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen2.5"
-    ollama_timeout: int = 30
+    # Ollama Configuration - read from environment variables
+    ollama_base_url: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
+    ollama_model: str = Field(default="qwen2.5", env="OLLAMA_MODEL") 
+    ollama_timeout: int = Field(default=30, env="OLLAMA_TIMEOUT")
     
     # Agent-specific LLM Configuration
     listener_agent_llm: Literal["openai", "anthropic", "ollama"] = "ollama"

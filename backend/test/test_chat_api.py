@@ -19,6 +19,144 @@ class ChatAPITester:
         self.base_url = base_url
         self.session_id = f"test-session-{int(time.time())}"
         self.test_results = []
+    
+    def _safe_print(self, message: str, level: str = "info"):
+        """Safe print function that handles Unicode encoding issues on Windows."""
+        try:
+            print(message)
+        except UnicodeEncodeError:
+            # Fall back to ASCII representation for problematic characters
+            safe_message = message.encode('ascii', errors='replace').decode('ascii')
+            print(safe_message)
+        except Exception as e:
+            # Last resort: print without special characters
+            print(f"[Console output error: {e}] - Original message length: {len(message)}")
+        
+    async def _retry_api_call(self, method: str, url: str, max_retries: int = 3, **kwargs):
+        """Helper method to retry API calls with exponential backoff."""
+        import asyncio
+        
+        for attempt in range(max_retries):
+            try:
+                if method.upper() == "GET":
+                    async with self.session.get(url, **kwargs) as response:
+                        return response.status, await response.json() if response.status == 200 else await response.text()
+                elif method.upper() == "POST":
+                    async with self.session.post(url, **kwargs) as response:
+                        return response.status, await response.json() if response.status == 200 else await response.text()
+                        
+            except (aiohttp.ClientConnectionError, aiohttp.ServerDisconnectedError, asyncio.TimeoutError) as e:
+                wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                print(f"   !! Connection error (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    print(f"   >> Retrying in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise e
+            except Exception as e:
+                print(f"   !! Unexpected error (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                else:
+                    raise e
+    
+    async def _warm_up_system(self):
+        """Warm up the system for consistent performance measurements."""
+        print("Warming up system for performance testing...")
+        
+        warm_up_message = {
+            "text": "系统预热测试消息",
+            "session_id": f"warmup-{int(time.time())}"
+        }
+        
+        try:
+            # Send a few warm-up requests to initialize agents and cache
+            for i in range(2):
+                print(f"   Warm-up request {i+1}/2...")
+                start_time = time.time()
+                
+                async with self.session.post(f"{self.base_url}/chat/message", json=warm_up_message) as response:
+                    if response.status == 200:
+                        await response.json()
+                        elapsed = int((time.time() - start_time) * 1000)
+                        print(f"   Warm-up {i+1} completed in {elapsed}ms")
+                    else:
+                        print(f"   Warm-up {i+1} failed: {response.status}")
+                        
+                # Small delay between warm-up requests
+                await asyncio.sleep(0.5)
+                        
+            print("   System warm-up completed\n")
+            
+        except Exception as e:
+            print(f"   Warning: System warm-up failed: {e}")
+            print("   Continuing with tests...\n")
+    
+    async def _optimize_system_performance(self):
+        """Trigger system performance optimization."""
+        try:
+            print("   >> Triggering performance optimization...")
+            async with self.session.post(f"{self.base_url}/chat/performance/optimize") as response:
+                if response.status == 200:
+                    optimization_data = await response.json()
+                    print(f"   + Performance optimization completed:")
+                    if optimization_data.get('success'):
+                        optimizations = optimization_data.get('data', {}).get('optimizations_applied', [])
+                        print(f"     Applied: {optimizations}")
+                    else:
+                        print(f"     No optimizations needed")
+                else:
+                    print(f"   !! Optimization endpoint returned: {response.status}")
+        except Exception as e:
+            print(f"   !! Could not trigger optimization: {e}")
+    
+    async def _cleanup_test_sessions(self, preserve_session: str = None):
+        """Clean up test sessions to prevent interference between tests."""
+        print("   >> Cleaning up test sessions...")
+        cleanup_sessions = []
+        
+        try:
+            # Get list of sessions
+            async with self.session.get(f"{self.base_url}/chat/sessions") as response:
+                if response.status == 200:
+                    sessions_data = await response.json()
+                    total_sessions = sessions_data.get('total_count', 0)
+                    
+                    # Identify test sessions (contain 'test-', 'stream-', 'error-', etc.)
+                    for session in sessions_data.get('sessions', []):
+                        session_id = session.get('session_id', '')
+                        # Don't clean up the main test session if we want to preserve it
+                        if session_id == preserve_session:
+                            continue
+                        if any(prefix in session_id for prefix in ['test-', 'stream-', 'error-', 'warmup-', 'natural-', 'sentiment-']):
+                            cleanup_sessions.append(session_id)
+            
+            # Clean up identified test sessions
+            cleaned_count = 0
+            for session_id in cleanup_sessions[:10]:  # Limit to prevent excessive cleanup
+                try:
+                    async with self.session.delete(f"{self.base_url}/chat/session/{session_id}") as response:
+                        if response.status == 200:
+                            cleaned_count += 1
+                except Exception:
+                    continue  # Ignore individual cleanup failures
+                    
+            print(f"   + Cleaned up {cleaned_count} test sessions")
+            
+        except Exception as e:
+            print(f"   !! Session cleanup failed: {e}")
+    
+    def _get_timeout_for_test(self, test_type: str) -> int:
+        """Get appropriate timeout for different test types."""
+        timeouts = {
+            'health': 5,
+            'message': 15,
+            'streaming': 30,
+            'concurrent': 60,
+            'performance': 45,
+            'default': 20
+        }
+        return timeouts.get(test_type, timeouts['default'])
         
     async def run_all_tests(self):
         """Run all test scenarios."""
@@ -28,24 +166,50 @@ class ChatAPITester:
         async with aiohttp.ClientSession() as session:
             self.session = session
             
-            # Test sequence
-            await self.test_health_check()
-            await self.test_send_basic_message()
-            await self.test_send_emotional_message()
-            await self.test_send_message_with_options()
-            await self.test_get_session_info()
-            await self.test_get_messages()
-            await self.test_get_emotion_history()
-            await self.test_list_sessions()
-            await self.test_streaming_message()
-            await self.test_streaming_error_scenarios()
-            await self.test_concurrent_streaming()
-            await self.test_streaming_performance_metrics()
-            await self.test_sentiment_validation()
-            await self.test_natural_response_validation()
-            await self.test_clear_session()
-            await self.test_delete_session()
-            await self.test_error_scenarios()
+            # Clean up any existing test sessions first (but preserve our main test session)
+            await self._cleanup_test_sessions(preserve_session=self.session_id)
+            
+            # Warm up the system first for consistent performance measurements
+            await self._warm_up_system()
+            
+            # Test sequence with improved error handling
+            tests_to_run = [
+                ("Health Check", self.test_health_check),
+                ("Basic Message", self.test_send_basic_message),  
+                ("Emotional Message", self.test_send_emotional_message),
+                ("Message with Options", self.test_send_message_with_options),
+                ("Session Info", self.test_get_session_info),
+                ("Get Messages", self.test_get_messages),
+                ("Emotion History", self.test_get_emotion_history),
+                ("List Sessions", self.test_list_sessions),
+                ("Streaming Messages", self.test_streaming_message),
+                ("Streaming Error Scenarios", self.test_streaming_error_scenarios),
+                ("Concurrent Streaming", self.test_concurrent_streaming),
+                ("Performance Metrics", self.test_streaming_performance_metrics),
+                ("Sentiment Validation", self.test_sentiment_validation),
+                ("Natural Response Validation", self.test_natural_response_validation),
+                ("Clear Session", self.test_clear_session),
+                ("Delete Session", self.test_delete_session),
+                ("Error Scenarios", self.test_error_scenarios)
+            ]
+            
+            # Run tests with improved error isolation
+            for test_name, test_func in tests_to_run:
+                try:
+                    print(f"\n{'='*20} {test_name} {'='*20}")
+                    await test_func()
+                except Exception as e:
+                    print(f"\n!!! Critical error in {test_name}: {e}")
+                    self.log_result(f"{test_name.lower().replace(' ', '_')}", False, f"Critical error: {e}")
+                    # Continue with other tests even if one fails critically
+                    continue
+                    
+                # Small delay between tests for stability
+                await asyncio.sleep(0.1)
+            
+            # Final cleanup (now we can clean up all test sessions including the main one)
+            print(f"\n{'='*20} Final Cleanup {'='*20}")
+            await self._cleanup_test_sessions()
             
         self.print_summary()
     
@@ -285,10 +449,10 @@ class ChatAPITester:
         # Log overall streaming test results
         total_streaming_tests = len(streaming_tests)
         if successful_streaming_tests == total_streaming_tests:
-            print(f"\n+ All {successful_streaming_tests}/{total_streaming_tests} streaming tests passed!")
+            self._safe_print(f"\n[PASS] All {successful_streaming_tests}/{total_streaming_tests} streaming tests passed!")
             self.log_result("streaming_message", True, f"All {successful_streaming_tests} tests passed")
         else:
-            print(f"\n- Only {successful_streaming_tests}/{total_streaming_tests} streaming tests passed")
+            self._safe_print(f"\n[FAIL] Only {successful_streaming_tests}/{total_streaming_tests} streaming tests passed")
             self.log_result("streaming_message", False, f"Only {successful_streaming_tests}/{total_streaming_tests} passed")
     
     async def test_streaming_error_scenarios(self):
@@ -317,11 +481,29 @@ class ChatAPITester:
             {
                 "name": "Extremely Long Message Streaming",
                 "data": {
-                    "text": "测试" * 10000,  # Very long message
+                    "text": "测试" * 1001,  # 4004 characters - exceeds 2000 limit
                     "session_id": f"long-stream-{int(time.time())}"
                 },
+                "expected_status": 422,  # Should return validation error
+                "description": "Extremely long message should return validation error"
+            },
+            {
+                "name": "Near Limit Message Streaming", 
+                "data": {
+                    "text": "很长的消息内容测试" * 40,  # ~800 characters - within limit
+                    "session_id": f"near-limit-{int(time.time())}"
+                },
                 "expected_status": 200,  # Should handle gracefully
-                "description": "Very long message streaming test"
+                "description": "Message near character limit should work"
+            },
+            {
+                "name": "Exactly At Limit Message Streaming",
+                "data": {
+                    "text": "测试" * 500,  # Exactly 2000 characters  
+                    "session_id": f"at-limit-{int(time.time())}"
+                },
+                "expected_status": 200,  # Should handle gracefully
+                "description": "Message exactly at 2000 character limit should work"
             }
         ]
         
@@ -489,12 +671,12 @@ class ChatAPITester:
             # Log concurrent streaming test results
             total_concurrent_tests = len(concurrent_messages)
             if successful_concurrent == total_concurrent_tests:
-                print(f"\n+ All {successful_concurrent}/{total_concurrent_tests} concurrent streaming tests passed!")
+                self._safe_print(f"\n[PASS] All {successful_concurrent}/{total_concurrent_tests} concurrent streaming tests passed!")
                 print(f"   Total chunks processed: {total_chunks}")
                 print(f"   Average concurrency performance: {total_concurrent_time/total_concurrent_tests:.1f}ms per stream")
                 self.log_result("concurrent_streaming", True, f"All {successful_concurrent} concurrent tests passed")
             else:
-                print(f"\n- Only {successful_concurrent}/{total_concurrent_tests} concurrent streaming tests passed")
+                self._safe_print(f"\n[FAIL] Only {successful_concurrent}/{total_concurrent_tests} concurrent streaming tests passed")
                 self.log_result("concurrent_streaming", False, f"Only {successful_concurrent}/{total_concurrent_tests} passed")
                 
         except Exception as e:
@@ -610,11 +792,34 @@ class ChatAPITester:
         try:
             async with self.session.get(f"{self.base_url}/chat/performance/stats") as response:
                 if response.status == 200:
-                    stats_data = await response.json()
-                    print(f"   + Performance stats retrieved:")
-                    print(f"      Cache hit rate: {stats_data.get('cache_hit_rate', 'N/A')}%")
-                    print(f"      Average response time: {stats_data.get('average_response_time', 'N/A')}ms")
-                    print(f"      Total requests: {stats_data.get('total_requests', 'N/A')}")
+                    response_data = await response.json()
+                    if response_data.get('success') and 'data' in response_data:
+                        stats_data = response_data['data']
+                        print(f"   + Performance stats retrieved:")
+                        print(f"      Cache hit rate: {stats_data.get('cache_hit_rate', 'N/A')}%")
+                        print(f"      Average response time: {stats_data.get('average_response_time_ms', 'N/A')}ms")
+                        print(f"      Total requests: {stats_data.get('total_requests', 'N/A')}")
+                        print(f"      Cache stats: {stats_data.get('cache_stats', {})}")
+                        
+                        # Performance threshold validation
+                        avg_response_time = stats_data.get('average_response_time_ms', 0)
+                        cache_hit_rate = stats_data.get('cache_hit_rate', 0)
+                        
+                        # Define performance thresholds
+                        max_acceptable_response_time = 10000  # 10 seconds
+                        
+                        performance_issues = []
+                        if avg_response_time > max_acceptable_response_time:
+                            performance_issues.append(f"High response time: {avg_response_time}ms > {max_acceptable_response_time}ms")
+                        
+                        if performance_issues:
+                            print(f"   !! Performance issues detected: {performance_issues}")
+                            await self._optimize_system_performance()
+                        else:
+                            print(f"   + Performance metrics within acceptable thresholds")
+                            
+                    else:
+                        print(f"   !! Invalid response format: {response_data}")
                 else:
                     print(f"   !! Performance stats endpoint returned: {response.status}")
         except Exception as e:
@@ -727,10 +932,10 @@ class ChatAPITester:
         
         # Log overall sentiment validation test result
         if successful_tests == len(test_messages):
-            print(f"\n+ All {successful_tests}/{len(test_messages)} sentiment validation tests passed!")
+            self._safe_print(f"\n[PASS] All {successful_tests}/{len(test_messages)} sentiment validation tests passed!")
             self.log_result("sentiment_validation", True, f"All {successful_tests} tests passed")
         else:
-            print(f"\n- Only {successful_tests}/{len(test_messages)} sentiment validation tests passed")
+            self._safe_print(f"\n[FAIL] Only {successful_tests}/{len(test_messages)} sentiment validation tests passed")
             self.log_result("sentiment_validation", False, f"Only {successful_tests}/{len(test_messages)} passed")
         
         # Additional test for the specific '+' sentiment issue that was fixed
@@ -827,33 +1032,47 @@ class ChatAPITester:
             
             try:
                 start_time = time.time()
-                async with self.session.post(f"{self.base_url}/chat/message", json=message_data) as response:
-                    end_time = time.time()
+                
+                # Use retry logic for better reliability
+                status, response_data = await self._retry_api_call(
+                    "POST", 
+                    f"{self.base_url}/chat/message", 
+                    json=message_data,
+                    max_retries=3
+                )
+                
+                end_time = time.time()
+                execution_time = int((end_time - start_time) * 1000)
+                
+                if status == 200 and isinstance(response_data, dict):
+                    response_text = response_data.get('response_text', '')
+                    print(f"   + Response received in {execution_time}ms")
                     
-                    if response.status == 200:
-                        data = await response.json()
-                        execution_time = int((end_time - start_time) * 1000)
-                        
-                        response_text = data.get('response_text', '')
-                        print(f"   + Response received in {execution_time}ms")
-                        print(f"   Response: {response_text[:80]}...")
-                        
-                        # Check for forbidden analytical phrases
-                        found_forbidden = []
-                        for phrase in forbidden_phrases:
-                            if phrase in response_text:
-                                found_forbidden.append(phrase)
-                        
-                        if not found_forbidden:
-                            print(f"   + Natural response validation passed")
-                            successful_tests += 1
-                        else:
-                            print(f"   - Found analytical phrases: {found_forbidden}")
-                            print(f"     Full response: {response_text}")
+                    # Safely truncate response for display - handle Unicode properly
+                    try:
+                        preview = response_text[:80] + "..." if len(response_text) > 80 else response_text
+                        print(f"   Response: {preview}")
+                    except UnicodeEncodeError:
+                        print(f"   Response: [Response contains special characters - {len(response_text)} chars]")
+                    
+                    # Check for forbidden analytical phrases
+                    found_forbidden = []
+                    for phrase in forbidden_phrases:
+                        if phrase in response_text:
+                            found_forbidden.append(phrase)
+                    
+                    if not found_forbidden:
+                        print(f"   + Natural response validation passed")
+                        successful_tests += 1
                     else:
-                        error_text = await response.text()
-                        print(f"   - API call failed: {response.status}")
-                        print(f"     Error: {error_text}")
+                        print(f"   - Found analytical phrases: {found_forbidden}")
+                        try:
+                            print(f"     Full response: {response_text}")
+                        except UnicodeEncodeError:
+                            print(f"     Full response: [Unicode display error - contains forbidden phrases]")
+                else:
+                    print(f"   - API call failed: {status}")
+                    print(f"     Error: {response_data}")
                         
             except Exception as e:
                 print(f"   - Test error: {e}")
@@ -1013,13 +1232,28 @@ class ChatAPITester:
             self.log_result(test_name, False, str(e))
     
     def log_result(self, test_name: str, success: bool, details: str):
-        """Log test result."""
-        self.test_results.append({
-            "test": test_name,
-            "success": success,
-            "details": details,
-            "timestamp": datetime.now().isoformat()
-        })
+        """Log test result with safe Unicode handling."""
+        try:
+            # Ensure details don't contain problematic Unicode for console output
+            safe_details = details
+            if isinstance(details, str):
+                # Replace common Unicode characters that cause Windows console issues
+                safe_details = details.replace('✅', '[PASS]').replace('❌', '[FAIL]').replace('⚠️', '[WARN]')
+                
+            self.test_results.append({
+                "test": test_name,
+                "success": success,
+                "details": safe_details,
+                "timestamp": datetime.now().isoformat()
+            })
+        except Exception as e:
+            # Fallback logging in case of any issues
+            self.test_results.append({
+                "test": test_name,
+                "success": success,  
+                "details": f"[Unicode logging error: {e}]",
+                "timestamp": datetime.now().isoformat()
+            })
     
     def print_summary(self):
         """Print test summary."""

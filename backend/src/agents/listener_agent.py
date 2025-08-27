@@ -42,23 +42,23 @@ class ListenerAgent(BaseAgent):
         self._load_emotion_patterns()
     
     def _load_emotion_patterns(self):
-        """Load emotion detection patterns and keywords."""
-        # Basic Chinese emotion keywords
-        self.emotion_keywords = {
-            "开心": ["开心", "高兴", "快乐", "愉快", "兴奋", "满足", "喜悦"],
-            "悲伤": ["悲伤", "难过", "伤心", "沮丧", "失落", "痛苦"],
-            "愤怒": ["愤怒", "生气", "火大", "气愤", "恼火", "暴躁"],
-            "焦虑": ["焦虑", "担心", "紧张", "不安", "恐惧", "害怕"],
-            "压力": ["压力", "疲惫", "累", "辛苦", "忙碌", "烦躁"],
-            "孤独": ["孤独", "寂寞", "无聊", "空虚", "寂寥"],
-            "平静": ["平静", "安静", "放松", "淡定", "宁静"],
-            "感激": ["感谢", "感激", "谢谢", "感恩", "感动"],
-            "困惑": ["困惑", "迷茫", "不懂", "疑惑", "纠结"]
-        }
+        """Load emotion detection patterns and keywords from configuration."""
+        # 从 YAML 配置加载情绪分析规则，不再硬编码
+        emotion_config = self.config.get("emotion_analysis", {})
         
-        # Sentiment indicators
-        self.positive_indicators = ["好", "棒", "赞", "不错", "满意", "成功", "顺利"]
-        self.negative_indicators = ["不好", "糟糕", "失败", "问题", "麻烦", "困难"]
+        self.emotion_keywords = emotion_config.get("emotion_keywords", {})
+        
+        # 加载情绪极性指示词
+        sentiment_indicators = emotion_config.get("sentiment_indicators", {})
+        self.positive_indicators = sentiment_indicators.get("positive", [])
+        self.negative_indicators = sentiment_indicators.get("negative", [])
+        
+        # 加载其他配置
+        self.intensity_rules = emotion_config.get("intensity_rules", {})
+        self.urgency_assessment = emotion_config.get("urgency_assessment", {})
+        self.needs_mapping = emotion_config.get("psychological_needs_mapping", {})
+        self.support_mapping = emotion_config.get("support_type_mapping", {})
+        self.fallback_config = emotion_config.get("fallback_analysis", {})
     
     async def process(self, input_data: ListenerInput) -> BaseAgentOutput:
         """
@@ -256,25 +256,35 @@ class ListenerAgent(BaseAgent):
         else:
             sentiment = "neutral"
         
-        # Calculate intensity based on punctuation and emotional words
-        intensity = 0.5
-        if "!" in text or "！" in text:
-            intensity += 0.2
-        if "?" in text or "？" in text:
-            intensity += 0.1
+        # Calculate intensity using config-driven rules
+        intensity = self.intensity_rules.get("default_intensity", 0.5)
+        
+        # Apply punctuation boost from config
+        punctuation_boost = self.intensity_rules.get("punctuation_boost", {})
+        for char, boost in punctuation_boost.items():
+            if char in text:
+                intensity += boost
+                
+        # Apply multiple emotions boost from config
         if len(detected_emotions) > 2:
-            intensity += 0.2
+            intensity += self.intensity_rules.get("multiple_emotions_boost", 0.2)
         
-        intensity = min(intensity, 1.0)
+        # Apply max intensity limit from config
+        max_intensity = self.intensity_rules.get("max_intensity", 1.0)
+        intensity = min(intensity, max_intensity)
         
-        # Determine urgency level
-        urgency_level = 1
-        if "帮助" in text_lower or "救" in text_lower:
-            urgency_level = 4
-        elif any(word in text_lower for word in ["痛苦", "绝望", "崩溃"]):
-            urgency_level = 3
+        # Determine urgency level using config-driven rules
+        urgency_levels = self.urgency_assessment.get("urgency_levels", {})
+        urgency_level = urgency_levels.get("normal", 1)
+        
+        # Check for crisis keywords from config
+        crisis_keywords = self.urgency_assessment.get("crisis_keywords", [])
+        if any(keyword in text_lower for keyword in crisis_keywords):
+            urgency_level = urgency_levels.get("crisis", 4)
+        elif any(word in text_lower for word in self.urgency_assessment.get("high_urgency_keywords", [])):
+            urgency_level = urgency_levels.get("high", 3)
         elif sentiment == "negative" and intensity > 0.7:
-            urgency_level = 2
+            urgency_level = urgency_levels.get("medium", 2)
         
         # Extract simple keywords
         keywords = []
@@ -284,54 +294,48 @@ class ListenerAgent(BaseAgent):
         return EmotionAnalysis(
             sentiment=sentiment,
             intensity=intensity,
-            confidence=0.6,  # Lower confidence for rule-based
-            primary_emotions=detected_emotions[:2] if detected_emotions else ["平静"],
+            confidence=self.fallback_config.get("confidence_level", 0.6),
+            primary_emotions=detected_emotions[:2] if detected_emotions else self.fallback_config.get("default_emotions", ["平静"]),
             secondary_emotions=detected_emotions[2:] if len(detected_emotions) > 2 else [],
             keywords=list(set(keywords)),
-            topics=["日常对话"],
+            topics=self.fallback_config.get("default_topics", ["日常对话"]),
             psychological_needs=self._assess_needs(detected_emotions, sentiment),
             urgency_level=urgency_level,
             support_type=self._determine_support_type(sentiment, detected_emotions),
-            processing_notes="Rule-based analysis (fallback)",
+            processing_notes=self.fallback_config.get("processing_note", "Rule-based analysis (fallback)"),
             analyzed_at=datetime.now()
         )
     
     def _assess_needs(self, emotions: List[str], sentiment: str) -> List[str]:
-        """Assess psychological needs based on emotions."""
+        """Assess psychological needs based on emotions using config-driven mapping."""
         needs = []
         
-        if "悲伤" in emotions:
-            needs.extend(["安慰", "倾听"])
-        if "焦虑" in emotions:
-            needs.extend(["安抚", "指导"])
-        if "愤怒" in emotions:
-            needs.extend(["理解", "发泄"])
-        if "孤独" in emotions:
-            needs.extend(["陪伴", "连接"])
-        if "压力" in emotions:
-            needs.extend(["放松", "支持"])
+        # Use config-driven emotion-to-needs mapping
+        for emotion in emotions:
+            if emotion in self.needs_mapping:
+                needs.extend(self.needs_mapping[emotion])
         
-        if sentiment == "positive":
-            needs.extend(["分享", "庆祝"])
-        elif sentiment == "negative" and not needs:
-            needs.extend(["支持", "理解"])
+        # Apply sentiment-based general needs from config
+        if sentiment == "positive" and "positive_general" in self.needs_mapping:
+            needs.extend(self.needs_mapping["positive_general"])
+        elif sentiment == "negative" and not needs and "negative_general" in self.needs_mapping:
+            needs.extend(self.needs_mapping["negative_general"])
         
         return list(set(needs))
     
     def _determine_support_type(self, sentiment: str, emotions: List[str]) -> str:
-        """Determine appropriate support type."""
-        if sentiment == "positive":
-            return "celebration"
-        elif "焦虑" in emotions:
-            return "anxiety_relief"
-        elif "悲伤" in emotions:
-            return "comfort"
-        elif "愤怒" in emotions:
-            return "anger_management"
-        elif "压力" in emotions:
-            return "stress_relief"
-        else:
-            return "general_support"
+        """Determine appropriate support type using config-driven mapping."""
+        # Check specific emotions first using config mapping
+        for emotion in emotions:
+            if emotion in self.support_mapping:
+                return self.support_mapping[emotion]
+        
+        # Fall back to sentiment-based mapping from config
+        if sentiment in self.support_mapping:
+            return self.support_mapping[sentiment]
+            
+        # Use default from config
+        return self.support_mapping.get("default", "general_support")
     
     def _extract_from_text(self, text: str) -> Dict[str, Any]:
         """Extract structured data from unstructured LLM text response."""

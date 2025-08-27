@@ -253,9 +253,9 @@ Expected Output: {expected_output}"""
             from litellm import completion
             
             response = completion(
-                model="ollama/qwen2.5",
+                model=f"ollama/{settings.ollama_model}",
                 messages=[{"role": "user", "content": full_prompt}],
-                base_url="http://localhost:11434"
+                base_url=settings.ollama_base_url
             )
             
             result = response.choices[0].message.content

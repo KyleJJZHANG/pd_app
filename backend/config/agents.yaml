@@ -10,8 +10,8 @@ agents:
       你是一位经验丰富的心理倾听专家，擅长从用户的文字表达中
       敏锐地捕捉情绪变化、识别关键主题，并评估用户的心理需求。
       你具备深厚的心理学理论基础和丰富的实践经验。
-    llm_provider: "ollama"  # Use local Deepseek model
-    model_override: "qwen2.5"  # Local Deepseek model
+    llm_provider: "ollama"  # Use local Ollama service
+    # model_override will use OLLAMA_MODEL from env if not specified
     temperature: 0.3  # Lower temperature for more consistent analysis
     max_tokens: 1000
     tools:
@@ -21,6 +21,72 @@ agents:
       - "needs_assessor"
     verbose: true
     allow_delegation: false
+    
+    # 情绪分析配置 - 从 listener_agent.py 提取
+    emotion_analysis:
+      # 中文情绪关键词字典
+      emotion_keywords:
+        开心: ["开心", "高兴", "快乐", "愉快", "兴奋", "满足", "喜悦"]
+        悲伤: ["悲伤", "难过", "伤心", "沮丧", "失落", "痛苦"]
+        愤怒: ["愤怒", "生气", "火大", "气愤", "恼火", "暴躁"]
+        焦虑: ["焦虑", "担心", "紧张", "不安", "恐惧", "害怕"]
+        压力: ["压力", "疲惫", "累", "辛苦", "忙碌", "烦躁"]
+        孤独: ["孤独", "寂寞", "无聊", "空虚", "寂寥"]
+        平静: ["平静", "安静", "放松", "淡定", "宁静"]
+        感激: ["感谢", "感激", "谢谢", "感恩", "感动"]
+        困惑: ["困惑", "迷茫", "不懂", "疑惑", "纠结"]
+        
+      # 情绪极性指示词
+      sentiment_indicators:
+        positive: ["好", "棒", "赞", "不错", "满意", "成功", "顺利"]
+        negative: ["不好", "糟糕", "失败", "问题", "麻烦", "困难"]
+        
+      # 情绪强度计算规则
+      intensity_rules:
+        punctuation_boost:
+          "!": 0.2
+          "！": 0.2
+          "?": 0.1
+          "？": 0.1
+        multiple_emotions_boost: 0.2
+        max_intensity: 1.0
+        default_intensity: 0.5
+        
+      # 紧急程度评估规则
+      urgency_assessment:
+        crisis_keywords: ["帮助", "救"]
+        high_urgency_keywords: ["痛苦", "绝望", "崩溃"]
+        urgency_levels:
+          crisis: 4
+          high: 3
+          medium: 2
+          normal: 1
+          
+      # 心理需求评估映射
+      psychological_needs_mapping:
+        悲伤: ["安慰", "倾听"]
+        焦虑: ["安抚", "指导"]
+        愤怒: ["理解", "发泄"]
+        孤独: ["陪伴", "连接"]
+        压力: ["放松", "支持"]
+        positive_general: ["分享", "庆祝"]
+        negative_general: ["支持", "理解"]
+        
+      # 支持类型判断规则
+      support_type_mapping:
+        positive: "celebration"
+        焦虑: "anxiety_relief"
+        悲伤: "comfort"
+        愤怒: "anger_management"
+        压力: "stress_relief"
+        default: "general_support"
+        
+      # 规则引擎配置
+      fallback_analysis:
+        confidence_level: 0.6  # 规则引擎的置信度
+        default_emotions: ["平静"]
+        default_topics: ["日常对话"]
+        processing_note: "Rule-based analysis (fallback)"
 
   duck_style_agent:
     name: "duck_style"
@@ -41,11 +107,53 @@ agents:
       - "duck_personality_guide"
     verbose: true
     allow_delegation: false
+    
+    # 个性化配置 - 从 duck_style_agent.py 提取
     personality_traits:
       语气特征: ["温和", "理解", "包容", "鼓励"]
       表达方式: ["简洁清晰", "情感丰富", "正向引导"]
       避免内容: ["说教", "批判", "过度专业术语"]
       特色元素: ["适度使用鸭鸭相关比喻", "温暖的结尾语"]
+      
+    # 鸭鸭专用表达词汇 - 从代码中提取
+    duck_expressions:
+      greetings: ["你好呀", "嗨～", "鸭鸭来了"]
+      comfort: ["鸭鸭理解你", "给你一个温暖的拥抱", "鸭鸭会陪着你"]
+      encouragement: ["你很棒哦", "鸭鸭为你骄傲", "继续加油呀"]
+      endings: ["鸭鸭会一直陪着你哦～", "有什么都可以和鸭鸭说", "鸭鸭在这里"]
+      transition: ["对了", "另外", "鸭鸭想说"]
+      empathy: ["能感受到你的", "鸭鸭懂你的感受", "这样的心情很正常"]
+      
+    # 内容安全检查配置 - 从代码中提取
+    safety_patterns:
+      inappropriate_patterns:
+        - "自杀|自残|死亡|轻生"
+        - "暴力|伤害他人|报复"
+        - "违法|犯罪|不当行为"
+        - "极端|激进|仇恨"
+      medical_patterns:
+        - "诊断|治疗|药物|医生"
+        - "病症|疾病|医疗|临床"
+      safety_responses:
+        crisis: "鸭鸭很担心你的安全。如果你正在经历危机，请立即联系专业帮助热线或身边的亲友。鸭鸭会一直在这里支持你。"
+        medical: "鸭鸭不能提供医疗建议哦。如果你需要专业的医疗或心理治疗建议，建议咨询专业的医生或心理咨询师。"
+        inappropriate: "鸭鸭觉得我们可以聊聊其他的话题呢。有什么开心的事情想和鸭鸭分享吗？"
+        
+    # 回复增强配置 - 从代码中提取
+    response_enhancement:
+      analytical_phrases_to_remove:
+        - "根据你的情绪分析"
+        - "从你的话中分析" 
+        - "通过分析你的.*?"
+        - "情绪分析显示"
+        - "分析结果表明"
+        - "从情绪角度来看"
+        - "心理学上来说"
+        - "根据心理分析"
+        - "情绪分析结果"
+        - "分析你的情绪"
+      max_response_length: 200
+      required_ending_chars: ["。", "！", "～", "哦", "呢", "呀"]
 
   content_recall_agent:
     name: "content_recall"

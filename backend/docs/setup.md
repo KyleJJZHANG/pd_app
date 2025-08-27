@@ -187,7 +187,7 @@ ANTHROPIC_MODEL=claude-3-sonnet-20240229
 # 使用 Ollama 本地部署
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama2-chinese
+OLLAMA_MODEL=qwen2.5
 ```
 
 ### 3.2 数据库配置
